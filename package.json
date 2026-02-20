@@ -1,0 +1,30 @@
+{
+  "name": "zenstack-graphql-builder",
+  "version": "0.1.0",
+  "description": "Automatically generate a complete GraphQL CRUD API from ZenStack schemas, including input types, filters, relation resolvers, custom directive support, security limits, and query projection parsing.",
+  "keywords": [
+    "zenstack",
+    "graphql",
+    "schema-builder",
+    "crud-generator",
+    "prisma",
+    "orm",
+    "api",
+    "graphql-schema",
+    "directive",
+    "security",
+    "projection",
+    "resolver"
+  ],
+  "license": "MIT",
+  "author": "17",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "decimal.js": "^10.6.0",
+    "graphql": "^16.12.0"
+  }
+}
