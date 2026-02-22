@@ -1,6 +1,6 @@
 {
   "name": "zenstack-graphql-builder",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Automatically generate a complete GraphQL CRUD API from ZenStack schemas, including input types, filters, relation resolvers, custom directive support, security limits, and query projection parsing.",
   "keywords": [
     "zenstack",
