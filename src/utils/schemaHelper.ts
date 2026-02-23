@@ -6,6 +6,7 @@ export interface FieldDef {
     array?: boolean;
     optional?: boolean;
     relation?: boolean;
+    unique?: boolean;
     foreignKeyFor?: string;
     default?: { name: string };
 }
@@ -13,6 +14,7 @@ export interface FieldDef {
 export interface ModelDef {
     fields: Record<string, FieldDef>;
     idFields: string[];
+    uniqueConstraints?: Record<string, { fields: string[] }>;
 }
 
 export interface ZenSchema {

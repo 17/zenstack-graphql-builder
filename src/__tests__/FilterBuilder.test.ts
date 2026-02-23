@@ -19,6 +19,8 @@ describe('FilterBuilder', () => {
         const stringFilter = filterBuilder.getFilter('String');
         expect(stringFilter).toBeDefined();
         expect(stringFilter?.name).toBe('StringFilter');
+        const fields = stringFilter!.getFields();
+        expect(fields.between).toBeDefined();
         expect(typeCache.has('StringFilter')).toBe(true);
         expect(typeCache.get('StringFilter')).toBe(stringFilter);
     });

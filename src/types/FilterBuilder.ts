@@ -101,6 +101,7 @@ export class FilterBuilder {
                 lte: { type: GraphQLString },
                 gt: { type: GraphQLString },
                 gte: { type: GraphQLString },
+                between: { type: new GraphQLList(new GraphQLNonNull(GraphQLString)) },
                 contains: { type: GraphQLString },
                 startsWith: { type: GraphQLString },
                 endsWith: { type: GraphQLString },

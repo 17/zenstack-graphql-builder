@@ -1,4 +1,4 @@
-import { GraphQLString, GraphQLInt, GraphQLObjectType } from 'graphql';
+import { GraphQLString, GraphQLInt, GraphQLObjectType, GraphQLInputObjectType } from 'graphql';
 import { TypeCache } from '../types/TypeCache';
 import { FilterBuilder } from '../types/FilterBuilder';
 import { ModelHelper, TypeResolver } from '../utils/schemaHelper';
@@ -8,9 +8,13 @@ const mockZenSchema = {
     models: {
         User: {
             idFields: ['id'],
+            uniqueConstraints: {
+                email: { fields: ['email'] }
+            },
             fields: {
                 id: { type: 'Int', default: { name: 'autoincrement' } },
-                name: { type: 'String' },
+                email: { type: 'String' },
+                name: { type: 'String', optional: true },
                 posts: { type: 'Post', array: true, relation: true },
             },
         },
@@ -36,8 +40,8 @@ describe('InputTypeBuilder', () => {
     beforeEach(() => {
         typeCache = new TypeCache();
         modelHelper = new ModelHelper(mockZenSchema);
-        filterBuilder = new FilterBuilder(typeCache, { Int: GraphQLInt } as any);
-        typeResolver = new TypeResolver(typeCache, { Int: GraphQLInt } as any);
+        filterBuilder = new FilterBuilder(typeCache, { Int: GraphQLInt, String: GraphQLString } as any);
+        typeResolver = new TypeResolver(typeCache, { Int: GraphQLInt, String: GraphQLString } as any);
         builder = new InputTypeBuilder(typeCache, filterBuilder, modelHelper, typeResolver);
     });
 
@@ -57,6 +61,7 @@ describe('InputTypeBuilder', () => {
         expect(whereUnique.name).toBe('UserWhereUniqueInput');
         const fields = whereUnique.getFields();
         expect(fields.id).toBeDefined();
+        expect(fields.email).toBeDefined();
         expect(fields.name).toBeUndefined();
     });
 
@@ -66,6 +71,12 @@ describe('InputTypeBuilder', () => {
         expect(orderBy.name).toBe('UserOrderByInput');
         const fields = orderBy.getFields();
         expect(fields.name).toBeDefined();
+        const nameOrder = fields.name.type;
+        expect(nameOrder).toBeInstanceOf(GraphQLInputObjectType);
+        if (nameOrder instanceof GraphQLInputObjectType) {
+            expect(nameOrder.getFields().sort).toBeDefined();
+            expect(nameOrder.getFields().nulls).toBeDefined();
+        }
         expect(fields.posts).toBeDefined();
     });
 

@@ -8,7 +8,7 @@ import {
 import { TypeCache } from './TypeCache';
 import { FilterBuilder } from './FilterBuilder';
 import { ModelHelper, TypeResolver } from '../utils/schemaHelper';
-import { SortOrderEnum } from './enums';
+import { SortOrderEnum, NullsOrderEnum } from './enums';
 
 export class InputTypeBuilder {
     private typeCache: TypeCache;
@@ -91,10 +91,55 @@ export class InputTypeBuilder {
 
         const modelDef = this.modelHelper.getModelDef(model);
         const fields: any = {};
+
+        // ID fields
         for (const idField of modelDef.idFields || []) {
             const field = modelDef.fields[idField];
-            if (!field) throw new Error(`ID field ${idField} not found in ${model}`);
-            fields[idField] = { type: this.typeResolver.fieldToGraphQLType(field) as any };
+            if (field) {
+                fields[idField] = { type: this.typeResolver.fieldToGraphQLType(field) as any };
+            }
+        }
+
+        // Single field unique constraints
+        for (const [fieldName, field] of Object.entries(modelDef.fields)) {
+            if ((field as any).unique) {
+                fields[fieldName] = { type: this.typeResolver.fieldToGraphQLType(field) as any };
+            }
+        }
+
+        // Multi-field unique constraints
+        if (modelDef.uniqueConstraints) {
+            for (const [constraintName, constraint] of Object.entries(modelDef.uniqueConstraints)) {
+                const constraintFields = (constraint as any).fields;
+                if (constraintFields.length === 1) {
+                    const fieldName = constraintFields[0];
+                    const field = modelDef.fields[fieldName];
+                    if (field) {
+                        fields[fieldName] = { type: this.typeResolver.fieldToGraphQLType(field) as any };
+                    }
+                } else {
+                    // Complex unique constraint
+                    const complexUniqueName = `${model}${constraintName}CompoundUniqueInput`;
+                    let complexType = this.typeCache.get<GraphQLInputObjectType>(complexUniqueName);
+                    if (!complexType) {
+                        const complexFields: any = {};
+                        for (const fieldName of constraintFields) {
+                            const field = modelDef.fields[fieldName];
+                            if (field) {
+                                complexFields[fieldName] = {
+                                    type: new GraphQLNonNull(this.typeResolver.fieldToGraphQLType(field) as any),
+                                };
+                            }
+                        }
+                        complexType = new GraphQLInputObjectType({
+                            name: complexUniqueName,
+                            fields: complexFields,
+                        });
+                        this.typeCache.set(complexUniqueName, complexType);
+                    }
+                    fields[constraintName] = { type: complexType };
+                }
+            }
         }
 
         const input = new GraphQLInputObjectType({ name, fields });
@@ -115,7 +160,23 @@ export class InputTypeBuilder {
 
                 for (const [fieldName, field] of Object.entries(modelDef.fields)) {
                     if (this.modelHelper.isScalar(field)) {
-                        fields[fieldName] = { type: SortOrderEnum };
+                        if (field.optional) {
+                            const optName = `${model}${fieldName}OrderByInput`;
+                            let optType = this.typeCache.get<GraphQLInputObjectType>(optName);
+                            if (!optType) {
+                                optType = new GraphQLInputObjectType({
+                                    name: optName,
+                                    fields: {
+                                        sort: { type: new GraphQLNonNull(SortOrderEnum) },
+                                        nulls: { type: NullsOrderEnum },
+                                    },
+                                });
+                                this.typeCache.set(optName, optType);
+                            }
+                            fields[fieldName] = { type: optType };
+                        } else {
+                            fields[fieldName] = { type: SortOrderEnum };
+                        }
                     }
                 }
 
