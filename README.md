@@ -1,6 +1,7 @@
 ZenStack GraphQL Builder
 ========================
-A powerful GraphQL schema generator that automatically creates a fully-featured GraphQL API from your [ZenStack](https://zenstack.dev/) data models. It provides a Prisma-like CRUD interface with filtering, pagination, aggregation, and custom directives support.
+Automatically generate a complete GraphQL CRUD API from your [ZenStack](https://zenstack.dev) schema. 
+This builder supports fetching, filtering, ordering, relations, caching, custom directives, and security constraints out of the box.
 
 [![npm version](https://img.shields.io/npm/v/zenstack-graphql-builder.svg)](https://www.npmjs.com/package/zenstack-graphql-builder)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
