@@ -10,7 +10,7 @@ const UpperCaseDirective = new GraphQLDirective({
 describe('DirectiveRegistry', () => {
     it('should register and retrieve handlers', () => {
         const registry = new DirectiveRegistry();
-        const mockHandler = jest.fn();
+        const mockHandler = vi.fn();
 
         registry.registerHandler('upperCase', mockHandler);
 

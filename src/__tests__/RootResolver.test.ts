@@ -29,7 +29,7 @@ describe('RootResolver', () => {
         const rootValue = resolver.buildRootValue();
         const mockClient = {
             user: {
-                findUnique: jest.fn().mockResolvedValue({ id: 1, name: 'Test' })
+                findUnique: vi.fn().mockResolvedValue({ id: 1, name: 'Test' })
             }
         };
 
