@@ -321,16 +321,7 @@ export class InputTypeBuilder {
                             }
                             fields[fieldName] = { type: arrType };
                         } else {
-                            const scalarName = `${model}${fieldName}UpdateScalarInput`;
-                            let scalarType = this.typeCache.get<GraphQLInputObjectType>(scalarName);
-                            if (!scalarType) {
-                                scalarType = new GraphQLInputObjectType({
-                                    name: scalarName,
-                                    fields: { type: baseType },
-                                });
-                                this.typeCache.set(scalarName, scalarType);
-                            }
-                            fields[fieldName] = { type: scalarType };
+                            fields[fieldName] = { type: baseType };
                         }
                     }
                 }
