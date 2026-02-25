@@ -287,7 +287,7 @@ export class InputTypeBuilder {
 
                 for (const [fieldName, field] of Object.entries(modelDef.fields)) {
                     if (this.modelHelper.isScalar(field)) {
-                        const baseType = this.typeResolver.fieldToGraphQLType(field) as any;
+                        const baseType = this.typeResolver.fieldToGraphQLType(field, true) as any;
                         const numeric = ['Int', 'Float', 'BigInt', 'Decimal'].includes(field.type);
                         if (numeric && !field.array) {
                             const opName = `${model}${fieldName}UpdateNumberInput`;

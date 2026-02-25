@@ -64,7 +64,7 @@ export class TypeResolver {
         this.scalarRegistry = scalarRegistry;
     }
 
-    fieldToGraphQLType(field: FieldDef): GraphQLType {
+    fieldToGraphQLType(field: FieldDef, optional: Boolean = false): GraphQLType {
         let base: GraphQLType;
         if (this.typeCache.has(field.type)) {
             base = this.typeCache.get(field.type)!;
@@ -75,11 +75,11 @@ export class TypeResolver {
         }
 
         let type = base;
-        if (field.array) {
-            type = new GraphQLList(new GraphQLNonNull(base));
+        if (!optional && !field.optional) {
+            type = new GraphQLNonNull(base);
         }
-        if (!field.optional) {
-            type = new GraphQLNonNull(type);
+        if (field.array) {
+            type = new GraphQLList(type);
         }
         return type;
     }
