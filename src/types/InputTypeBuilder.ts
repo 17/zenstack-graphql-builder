@@ -326,7 +326,7 @@ export class InputTypeBuilder {
                             if (!scalarType) {
                                 scalarType = new GraphQLInputObjectType({
                                     name: scalarName,
-                                    fields: { set: { type: baseType } },
+                                    fields: { type: baseType },
                                 });
                                 this.typeCache.set(scalarName, scalarType);
                             }
