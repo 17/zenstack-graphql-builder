@@ -220,7 +220,7 @@ export class InputTypeBuilder {
 
                 for (const [fieldName, field] of Object.entries(modelDef.fields)) {
                     if (this.modelHelper.isScalar(field) && !this.modelHelper.isAutoIncrement(field)) {
-                        fields[fieldName] = { type: this.typeResolver.fieldToGraphQLType(field) as any };
+                        fields[fieldName] = { type: this.typeResolver.fieldToGraphQLType(field, true) as any };
                     }
                 }
 
@@ -288,24 +288,8 @@ export class InputTypeBuilder {
                 for (const [fieldName, field] of Object.entries(modelDef.fields)) {
                     if (this.modelHelper.isScalar(field)) {
                         const baseType = this.typeResolver.fieldToGraphQLType(field, true) as any;
-                        const numeric = ['Int', 'Float', 'BigInt', 'Decimal'].includes(field.type);
-                        if (numeric && !field.array) {
-                            const opName = `${model}${fieldName}UpdateNumberInput`;
-                            let opType = this.typeCache.get<GraphQLInputObjectType>(opName);
-                            if (!opType) {
-                                opType = new GraphQLInputObjectType({
-                                    name: opName,
-                                    fields: {
-                                        set: { type: baseType },
-                                        increment: { type: baseType },
-                                        decrement: { type: baseType },
-                                        multiply: { type: baseType },
-                                        divide: { type: baseType },
-                                    },
-                                });
-                                this.typeCache.set(opName, opType);
-                            }
-                            fields[fieldName] = { type: opType };
+                        if (!field.array) {
+                            fields[fieldName] = { type: baseType };
                         } else if (field.array) {
                             const arrName = `${model}${fieldName}UpdateArrayInput`;
                             let arrType = this.typeCache.get<GraphQLInputObjectType>(arrName);
@@ -388,6 +372,122 @@ export class InputTypeBuilder {
         this.typeCache.set(name, update);
         return update;
     }
+
+    getAtomicUpdateInput(model: string): GraphQLInputObjectType {
+        const name = `${model}AtomicUpdateInput`;
+        const existing = this.typeCache.get<GraphQLInputObjectType>(name);
+        if (existing) return existing;
+
+        const modelDef = this.modelHelper.getModelDef(model);
+        const update = new GraphQLInputObjectType({
+            name,
+            fields: () => {
+                const fields: any = {};
+
+                for (const [fieldName, field] of Object.entries(modelDef.fields)) {
+                    if (this.modelHelper.isScalar(field)) {
+                        const baseType = this.typeResolver.fieldToGraphQLType(field, true) as any;
+                        const numeric = ['Int', 'Float', 'BigInt', 'Decimal'].includes(field.type);
+                        if (numeric && !field.array) {
+                            const opName = `${model}${fieldName}UpdateNumberInput`;
+                            let opType = this.typeCache.get<GraphQLInputObjectType>(opName);
+                            if (!opType) {
+                                opType = new GraphQLInputObjectType({
+                                    name: opName,
+                                    fields: {
+                                        set: { type: baseType },
+                                        increment: { type: baseType },
+                                        decrement: { type: baseType },
+                                        multiply: { type: baseType },
+                                        divide: { type: baseType },
+                                    },
+                                });
+                                this.typeCache.set(opName, opType);
+                            }
+                            fields[fieldName] = { type: opType };
+                        } else if (field.array) {
+                            const arrName = `${model}${fieldName}UpdateArrayInput`;
+                            let arrType = this.typeCache.get<GraphQLInputObjectType>(arrName);
+                            if (!arrType) {
+                                arrType = new GraphQLInputObjectType({
+                                    name: arrName,
+                                    fields: {
+                                        set: { type: new GraphQLList(new GraphQLNonNull(baseType)) },
+                                        push: { type: new GraphQLList(new GraphQLNonNull(baseType)) },
+                                    },
+                                });
+                                this.typeCache.set(arrName, arrType);
+                            }
+                            fields[fieldName] = { type: arrType };
+                        } else {
+                            fields[fieldName] = { type: baseType };
+                        }
+                    }
+                }
+
+                for (const [fieldName, field] of Object.entries(modelDef.fields)) {
+                    if (this.modelHelper.isRelation(field)) {
+                        const target = this.modelHelper.getTargetModel(field);
+                        const targetCreate = this.getCreateInput(target);
+                        const targetWhereUnique = this.getWhereUniqueInput(target);
+                        const targetConnectOrCreate = this.getConnectOrCreateInput(target);
+                        const targetUpdate = this.getAtomicUpdateInput(target);
+                        const targetWhere = this.getWhereInput(target);
+                        const targetUpdateNested = this.getUpdateNestedInput(target);
+                        const targetUpdateManyNested = this.getUpdateManyNestedInput(target);
+                        const targetUpsertNested = this.getUpsertNestedInput(target);
+
+                        if (field.array) {
+                            const relName = `${model}${fieldName}UpdateManyRelationInput`;
+                            let relType = this.typeCache.get<GraphQLInputObjectType>(relName);
+                            if (!relType) {
+                                relType = new GraphQLInputObjectType({
+                                    name: relName,
+                                    fields: {
+                                        create: { type: new GraphQLList(new GraphQLNonNull(targetCreate)) },
+                                        connect: { type: new GraphQLList(new GraphQLNonNull(targetWhereUnique)) },
+                                        connectOrCreate: { type: new GraphQLList(new GraphQLNonNull(targetConnectOrCreate)) },
+                                        disconnect: { type: new GraphQLList(new GraphQLNonNull(targetWhereUnique)) },
+                                        delete: { type: new GraphQLList(new GraphQLNonNull(targetWhereUnique)) },
+                                        update: { type: new GraphQLList(new GraphQLNonNull(targetUpdateNested)) },
+                                        updateMany: { type: new GraphQLList(new GraphQLNonNull(targetUpdateManyNested)) },
+                                        deleteMany: { type: new GraphQLList(new GraphQLNonNull(targetWhere)) },
+                                        set: { type: new GraphQLList(new GraphQLNonNull(targetWhereUnique)) },
+                                    },
+                                });
+                                this.typeCache.set(relName, relType);
+                            }
+                            fields[fieldName] = { type: relType };
+                        } else {
+                            const relName = `${model}${fieldName}UpdateOneRelationInput`;
+                            let relType = this.typeCache.get<GraphQLInputObjectType>(relName);
+                            if (!relType) {
+                                relType = new GraphQLInputObjectType({
+                                    name: relName,
+                                    fields: {
+                                        create: { type: targetCreate },
+                                        connect: { type: targetWhereUnique },
+                                        connectOrCreate: { type: targetConnectOrCreate },
+                                        disconnect: { type: GraphQLBoolean },
+                                        delete: { type: GraphQLBoolean },
+                                        update: { type: targetUpdate },
+                                        upsert: { type: targetUpsertNested },
+                                    },
+                                });
+                                this.typeCache.set(relName, relType);
+                            }
+                            fields[fieldName] = { type: relType };
+                        }
+                    }
+                }
+                return fields;
+            },
+        });
+
+        this.typeCache.set(name, update);
+        return update;
+    }
+
 
     getCreateManyInput(model: string): GraphQLInputObjectType {
         const name = `${model}CreateManyInput`;

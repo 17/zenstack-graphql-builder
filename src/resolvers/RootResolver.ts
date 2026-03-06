@@ -36,9 +36,11 @@ export class RootResolver {
         for (const model of this.modelNames) {
             const lower = model[0].toLowerCase() + model.slice(1);
 
-            for (const operation of this.operations) {
+            for (let operation of this.operations) {
                 rootValue[`${lower}_${operation}`] = async (args: any, contextValue: any, info: any) => {
+
                     const { client, options: contextOptions } = contextValue;
+                    operation = operation.replaceAll('Atomic', '')
 
                     // 根据请求上下文中的 options 动态创建或覆盖安全策略
                     const dynamicPolicy = new SecurityPolicy(contextOptions);

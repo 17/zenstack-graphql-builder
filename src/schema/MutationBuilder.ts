@@ -92,6 +92,45 @@ export class MutationBuilder {
                 },
             };
 
+            mutationFields[`${lower}_updateAtomic`] = {
+                type: this.outputTypeBuilder.getOutputType(model),
+                args: {
+                    where: { type: new GraphQLNonNull(this.inputTypeBuilder.getWhereUniqueInput(model)) },
+                    data: { type: new GraphQLNonNull(this.inputTypeBuilder.getAtomicUpdateInput(model)) },
+                    omit: { type: this.inputTypeBuilder.getOmitInput(model) },
+                },
+            };
+
+            mutationFields[`${lower}_updateManyAtomic`] = {
+                type: this.outputTypeBuilder.getAffectedRowsOutput(),
+                args: {
+                    where: { type: this.inputTypeBuilder.getWhereInput(model) },
+                    data: { type: new GraphQLNonNull(this.inputTypeBuilder.getAtomicUpdateInput(model)) },
+                    limit: { type: GraphQLInt },
+                },
+            };
+
+            mutationFields[`${lower}_updateManyAtomicAndReturn`] = {
+                type: new GraphQLList(new GraphQLNonNull(this.outputTypeBuilder.getOutputType(model))),
+                args: {
+                    where: { type: this.inputTypeBuilder.getWhereInput(model) },
+                    data: { type: new GraphQLNonNull(this.inputTypeBuilder.getAtomicUpdateInput(model)) },
+                    limit: { type: GraphQLInt },
+                    omit: { type: this.inputTypeBuilder.getOmitInput(model) },
+                },
+            };
+
+            mutationFields[`${lower}_upsertAtomic`] = {
+                type: new GraphQLNonNull(this.outputTypeBuilder.getOutputType(model)),
+                args: {
+                    where: { type: new GraphQLNonNull(this.inputTypeBuilder.getWhereUniqueInput(model)) },
+                    create: { type: new GraphQLNonNull(this.inputTypeBuilder.getCreateInput(model)) },
+                    update: { type: new GraphQLNonNull(this.inputTypeBuilder.getAtomicUpdateInput(model)) },
+                    omit: { type: this.inputTypeBuilder.getOmitInput(model) },
+                },
+            };
+
+
             mutationFields[`${lower}_delete`] = {
                 type: this.outputTypeBuilder.getOutputType(model),
                 args: {
