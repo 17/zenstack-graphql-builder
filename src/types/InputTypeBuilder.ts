@@ -96,14 +96,14 @@ export class InputTypeBuilder {
         for (const idField of modelDef.idFields || []) {
             const field = modelDef.fields[idField];
             if (field) {
-                fields[idField] = { type: this.typeResolver.fieldToGraphQLType(field) as any };
+                fields[idField] = { type: this.typeResolver.fieldToGraphQLType(field, true) as any };
             }
         }
 
         // Single field unique constraints
         for (const [fieldName, field] of Object.entries(modelDef.fields)) {
             if ((field as any).unique) {
-                fields[fieldName] = { type: this.typeResolver.fieldToGraphQLType(field) as any };
+                fields[fieldName] = { type: this.typeResolver.fieldToGraphQLType(field, true) as any };
             }
         }
 
@@ -239,9 +239,9 @@ export class InputTypeBuilder {
                                 nestedType = new GraphQLInputObjectType({
                                     name: nestedName,
                                     fields: {
-                                        create: { type: new GraphQLList(targetCreate) },
-                                        connect: { type: new GraphQLList(targetWhereUnique) },
-                                        connectOrCreate: { type: new GraphQLList(targetConnectOrCreate) },
+                                        create: { type: new GraphQLList(new GraphQLNonNull(targetCreate)) },
+                                        connect: { type: new GraphQLList(new GraphQLNonNull(targetWhereUnique)) },
+                                        connectOrCreate: { type: new GraphQLList(new GraphQLNonNull(targetConnectOrCreate)) },
                                         createMany: { type: targetCreateMany },
                                     },
                                 });
@@ -494,9 +494,13 @@ export class InputTypeBuilder {
         const existing = this.typeCache.get<GraphQLInputObjectType>(name);
         if (existing) return existing;
 
-        const fields: any = {
-            data: { type: new GraphQLList(new GraphQLNonNull(this.getCreateInput(model))) }
-        };
+        const modelDef = this.modelHelper.getModelDef(model);
+        const fields: any = {};
+        for (const [fieldName, field] of Object.entries(modelDef.fields)) {
+            if (this.modelHelper.isScalar(field) && !this.modelHelper.isAutoIncrement(field)) {
+                fields[fieldName] = { type: this.typeResolver.fieldToGraphQLType(field) as any };
+            }
+        }
 
         const input = new GraphQLInputObjectType({ name, fields });
         this.typeCache.set(name, input);
