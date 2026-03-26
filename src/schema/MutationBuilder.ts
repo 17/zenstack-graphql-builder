@@ -40,7 +40,7 @@ export class MutationBuilder {
             mutationFields[`${lower}_createMany`] = {
                 type: this.outputTypeBuilder.getAffectedRowsOutput(),
                 args: {
-                    data: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(this.inputTypeBuilder.getCreateManyInput(model)))) },
+                    data: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(this.inputTypeBuilder.getCreateInput(model)))) },
                     skipDuplicates: { type: GraphQLBoolean },
                 },
             };
@@ -48,7 +48,7 @@ export class MutationBuilder {
             mutationFields[`${lower}_createManyAndReturn`] = {
                 type: new GraphQLList(new GraphQLNonNull(this.outputTypeBuilder.getOutputType(model))),
                 args: {
-                    data: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(this.inputTypeBuilder.getCreateManyInput(model)))) },
+                    data: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(this.inputTypeBuilder.getCreateInput(model)))) },
                     skipDuplicates: { type: GraphQLBoolean },
                     omit: { type: this.inputTypeBuilder.getOmitInput(model) },
                 },
