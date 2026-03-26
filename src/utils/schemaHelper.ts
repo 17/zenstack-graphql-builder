@@ -39,7 +39,7 @@ export class ModelHelper {
     }
 
     isScalar(field: FieldDef): boolean {
-        return !field.relation && !field.foreignKeyFor;
+        return !field.relation;
     }
 
     isRelation(field: FieldDef): boolean {

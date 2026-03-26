@@ -78,7 +78,8 @@ export const BytesScalar = new GraphQLScalarType({
 export const DecimalScalar = new GraphQLScalarType({
     name: 'Decimal',
     serialize: (v: any) => (v instanceof Decimal ? v.toString() : v?.toString?.()),
-    parseValue: (v) => (v == null ? null : new Decimal(v as Decimal.Value)),
+    // parseValue: (v) => (v == null ? null : new Decimal(v as Decimal.Value)),
+    parseValue: (v) => v,
     parseLiteral: (ast) => {
         if (ast.kind === Kind.STRING || ast.kind === Kind.INT || ast.kind === Kind.FLOAT) {
             try { return new Decimal(ast.value); } catch { return null; }

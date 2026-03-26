@@ -239,9 +239,9 @@ export class InputTypeBuilder {
                                 nestedType = new GraphQLInputObjectType({
                                     name: nestedName,
                                     fields: {
-                                        create: { type: targetCreate },
-                                        connect: { type: targetWhereUnique },
-                                        connectOrCreate: { type: targetConnectOrCreate },
+                                        create: { type: new GraphQLList(targetCreate) },
+                                        connect: { type: new GraphQLList(targetWhereUnique) },
+                                        connectOrCreate: { type: new GraphQLList(targetConnectOrCreate) },
                                         createMany: { type: targetCreateMany },
                                     },
                                 });
@@ -494,11 +494,9 @@ export class InputTypeBuilder {
         const existing = this.typeCache.get<GraphQLInputObjectType>(name);
         if (existing) return existing;
 
-        const modelDef = this.modelHelper.getModelDef(model);
         const fields: any = {
             data: { type: new GraphQLList(new GraphQLNonNull(this.getCreateInput(model))) }
         };
-
 
         const input = new GraphQLInputObjectType({ name, fields });
         this.typeCache.set(name, input);
