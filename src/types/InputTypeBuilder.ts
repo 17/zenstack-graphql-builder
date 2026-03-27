@@ -127,7 +127,7 @@ export class InputTypeBuilder {
                             const field = modelDef.fields[fieldName];
                             if (field) {
                                 complexFields[fieldName] = {
-                                    type: new GraphQLNonNull(this.typeResolver.fieldToGraphQLType(field) as any),
+                                    type: this.typeResolver.fieldToGraphQLType(field) as any,
                                 };
                             }
                         }
@@ -569,8 +569,8 @@ export class InputTypeBuilder {
         const input = new GraphQLInputObjectType({
             name,
             fields: () => ({
-                where: { type: new GraphQLNonNull(this.getWhereUniqueInput(model)) },
-                create: { type: new GraphQLNonNull(this.getCreateInput(model)) },
+                where: { type: this.getWhereUniqueInput(model) },
+                create: { type: this.getCreateInput(model) },
             }),
         });
         this.typeCache.set(name, input);
@@ -585,8 +585,8 @@ export class InputTypeBuilder {
         const input = new GraphQLInputObjectType({
             name,
             fields: () => ({
-                where: { type: new GraphQLNonNull(this.getWhereUniqueInput(model)) },
-                data: { type: new GraphQLNonNull(this.getUpdateInput(model)) },
+                where: { type: this.getWhereUniqueInput(model) },
+                data: { type: this.getUpdateInput(model) },
             }),
         });
         this.typeCache.set(name, input);
@@ -618,9 +618,9 @@ export class InputTypeBuilder {
         const input = new GraphQLInputObjectType({
             name,
             fields: () => ({
-                where: { type: new GraphQLNonNull(this.getWhereUniqueInput(model)) },
-                create: { type: new GraphQLNonNull(this.getCreateInput(model)) },
-                update: { type: new GraphQLNonNull(this.getUpdateInput(model)) },
+                where: { type: this.getWhereUniqueInput(model) },
+                create: { type: this.getCreateInput(model) },
+                update: { type: this.getUpdateInput(model) },
             }),
         });
         this.typeCache.set(name, input);

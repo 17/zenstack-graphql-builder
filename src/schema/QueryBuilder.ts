@@ -40,7 +40,7 @@ export class QueryBuilder {
             };
 
             queryFields[`${lower}_findUniqueOrThrow`] = {
-                type: new GraphQLNonNull(this.outputTypeBuilder.getOutputType(model)),
+                type: this.outputTypeBuilder.getOutputType(model),
                 args: {
                     where: { type: new GraphQLNonNull(this.inputTypeBuilder.getWhereUniqueInput(model)) },
                     omit: { type: this.inputTypeBuilder.getOmitInput(model) },
@@ -61,7 +61,7 @@ export class QueryBuilder {
             };
 
             queryFields[`${lower}_findFirstOrThrow`] = {
-                type: new GraphQLNonNull(this.outputTypeBuilder.getOutputType(model)),
+                type: this.outputTypeBuilder.getOutputType(model),
                 args: {
                     where: { type: this.inputTypeBuilder.getWhereInput(model) },
                     orderBy: { type: new GraphQLList(new GraphQLNonNull(this.inputTypeBuilder.getOrderByInput(model))) },
@@ -74,7 +74,7 @@ export class QueryBuilder {
             };
 
             queryFields[`${lower}_findMany`] = {
-                type: new GraphQLList(new GraphQLNonNull(this.outputTypeBuilder.getOutputType(model))),
+                type: new GraphQLList(this.outputTypeBuilder.getOutputType(model)),
                 args: {
                     where: { type: this.inputTypeBuilder.getWhereInput(model) },
                     orderBy: { type: new GraphQLList(new GraphQLNonNull(this.inputTypeBuilder.getOrderByInput(model))) },
@@ -98,7 +98,7 @@ export class QueryBuilder {
             };
 
             queryFields[`${lower}_aggregate`] = {
-                type: new GraphQLNonNull(JsonScalar),
+                type: JsonScalar,
                 args: {
                     where: { type: this.inputTypeBuilder.getWhereInput(model) },
                     orderBy: { type: new GraphQLList(new GraphQLNonNull(this.inputTypeBuilder.getOrderByInput(model))) },
@@ -114,9 +114,9 @@ export class QueryBuilder {
             };
 
             queryFields[`${lower}_groupBy`] = {
-                type: new GraphQLList(new GraphQLNonNull(JsonScalar)),
+                type: JsonScalar,
                 args: {
-                    by: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(this.outputTypeBuilder.getDistinctEnum(model)))) },
+                    by: { type: new GraphQLList(new GraphQLNonNull(this.outputTypeBuilder.getDistinctEnum(model))) },
                     where: { type: this.inputTypeBuilder.getWhereInput(model) },
                     having: { type: this.inputTypeBuilder.getWhereInput(model) },
                     take: { type: GraphQLInt },
@@ -130,7 +130,7 @@ export class QueryBuilder {
             };
 
             queryFields[`${lower}_exists`] = {
-                type: new GraphQLNonNull(GraphQLBoolean),
+                type: GraphQLBoolean,
                 args: { where: { type: this.inputTypeBuilder.getWhereInput(model) } },
             };
         }
