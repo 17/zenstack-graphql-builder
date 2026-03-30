@@ -42,7 +42,7 @@ export class DirectiveExtractor {
      * @param selectionSet 当前选择集
      * @param fragments Fragment 定义
      * @param variables 变量
-     * @param depth 当前深度
+     * @param depth 最大深度
      */
     traverseASTNode(
         selectionSet: SelectionSetNode | undefined,
@@ -55,7 +55,7 @@ export class DirectiveExtractor {
         const transformPlan: TransformPlan = {};
         let hasDirectivesInTree = false;
 
-        if (!selectionSet) return { prismaSelect: undefined, transformPlan: null };
+        if (!selectionSet || depth <= 0) return { prismaSelect: undefined, transformPlan: null };
 
         for (const selection of selectionSet.selections) {
             // 1. 处理片段 (Fragments)
@@ -96,8 +96,11 @@ export class DirectiveExtractor {
                         selection.selectionSet,
                         fragments,
                         variables,
-                        depth + 1
+                        depth - 1
                     );
+                    if (subResult.prismaSelect == null && subResult.transformPlan == null) {
+                        continue;
+                    }
 
                     prismaSelect[fieldName] = {
                         select: subResult.prismaSelect,
@@ -131,11 +134,11 @@ export class DirectiveExtractor {
     /**
      * 解析入口方法
      */
-    extract(info: any, variables: any = {}): ParseResult {
+    extract(info: any, variables: any = {}, depth: number = 99): ParseResult {
         const { fieldNodes, fragments } = info;
         if (!fieldNodes || fieldNodes.length === 0) {
             return { prismaSelect: undefined, transformPlan: null };
         }
-        return this.traverseASTNode(fieldNodes[0].selectionSet, fragments, variables, 0);
+        return this.traverseASTNode(fieldNodes[0].selectionSet, fragments, variables, depth);
     }
 }

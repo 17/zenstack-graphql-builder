@@ -45,13 +45,16 @@ export class RootResolver {
                     // 根据请求上下文中的 options 动态创建安全策略
                     const dynamicPolicy = new SecurityPolicy(contextOptions);
                     const dynamicExtractor = new DirectiveExtractor(dynamicPolicy);
+                    const { prismaSelect, transformPlan } = dynamicExtractor.extract(info, info.variableValues, contextOptions.maxDepth);
 
-                    const safeArgs = dynamicPolicy.validateArguments(args);
-
+                    const safeArgs = {
+                        ...dynamicPolicy.validateArguments(args),
+                        ...['aggregate', 'groupBy'].includes(operation) ? removeSelectKey(prismaSelect) : { select: prismaSelect }
+                    };
                     const makeSchema = client.$zod[`make${operation.replace(/\b\w/g, char => char.toUpperCase()).replaceAll('OrThrow', '')}Schema`](model, {
                         relationDepth: contextOptions.maxDepth,
                     });
-                    const validationResult = makeSchema.safeParse(args);
+                    const validationResult = makeSchema.safeParse(safeArgs);
                     if (!validationResult.success && contextOptions.throwOnError) {
                         const issues = validationResult.error?.issues
                             ?.map((i: any) => `${i.path.join('.')}: ${i.message}`)
@@ -67,13 +70,7 @@ export class RootResolver {
                         return
                     }
 
-                    const { prismaSelect, transformPlan } = dynamicExtractor.extract(info, info.variableValues);
-
-                    const rawResult = await client[lower][operation]({
-                        ...safeArgs,
-                        ...['aggregate', 'groupBy'].includes(operation) ? removeSelectKey(prismaSelect) : { select: prismaSelect }
-                    });
-
+                    const rawResult = await client[lower][operation](safeArgs);
                     return await this.applier.applyDirectives(rawResult, transformPlan, info.variableValues);
                 };
             }
