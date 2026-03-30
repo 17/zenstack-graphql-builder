@@ -22,6 +22,8 @@ export interface ZenSchema {
     enums?: Record<string, any>;
 }
 
+const NUMERIC_TYPES = ['Int', 'Float', 'BigInt', 'Decimal'];
+
 export class ModelHelper {
     private zenSchema: ZenSchema;
 
@@ -40,6 +42,10 @@ export class ModelHelper {
 
     isScalar(field: FieldDef): boolean {
         return !field.relation;
+    }
+
+    isNumericScalar(field: FieldDef): boolean {
+        return !field.relation && NUMERIC_TYPES.includes(field.type);
     }
 
     isRelation(field: FieldDef): boolean {

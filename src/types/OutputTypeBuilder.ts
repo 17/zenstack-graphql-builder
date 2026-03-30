@@ -1,6 +1,7 @@
 import {
     GraphQLObjectType,
     GraphQLInt,
+    GraphQLFloat,
     GraphQLList,
     GraphQLNonNull,
     GraphQLEnumType,
@@ -8,7 +9,6 @@ import {
 import { TypeCache } from './TypeCache';
 import { ModelHelper, TypeResolver } from '../utils/schemaHelper';
 import { InputTypeBuilder } from './InputTypeBuilder';
-
 export class OutputTypeBuilder {
     private typeCache: TypeCache;
     private modelHelper: ModelHelper;
@@ -53,12 +53,121 @@ export class OutputTypeBuilder {
         const modelDef = this.modelHelper.getModelDef(model);
         const fields: any = { _all: { type: GraphQLInt } };
         for (const [fieldName, field] of Object.entries(modelDef.fields)) {
-            if (this.modelHelper.isScalar(field)) {
+            if (this.modelHelper.isScalar(field) || this.modelHelper.isRelation(field)) {
                 fields[fieldName] = { type: GraphQLInt };
             }
         }
-
         const output = new GraphQLObjectType({ name, fields });
+        this.typeCache.set(name, output);
+        return output;
+    }
+
+    getAvgAggOutput(model: string): GraphQLObjectType {
+        const name = `${model}AvgAggregateOutput`;
+        const existing = this.typeCache.get<GraphQLObjectType>(name);
+        if (existing) return existing;
+        const modelDef = this.modelHelper.getModelDef(model);
+        const fields: any = {};
+        for (const [fieldName, field] of Object.entries(modelDef.fields)) {
+            if (this.modelHelper.isNumericScalar(field)) {
+                fields[fieldName] = { type: GraphQLFloat };
+            }
+        }
+        const output = new GraphQLObjectType({ name, fields });
+        this.typeCache.set(name, output);
+        return output;
+    }
+
+    getSumAggOutput(model: string): GraphQLObjectType {
+        const name = `${model}SumAggregateOutput`;
+        const existing = this.typeCache.get<GraphQLObjectType>(name);
+        if (existing) return existing;
+        const modelDef = this.modelHelper.getModelDef(model);
+        const fields: any = {};
+        for (const [fieldName, field] of Object.entries(modelDef.fields)) {
+            if (this.modelHelper.isNumericScalar(field)) {
+                fields[fieldName] = { type: this.typeResolver.fieldToGraphQLType(field, true) };
+            }
+        }
+        const output = new GraphQLObjectType({ name, fields });
+        this.typeCache.set(name, output);
+        return output;
+    }
+
+    getMinAggOutput(model: string): GraphQLObjectType {
+        const name = `${model}MinAggregateOutput`;
+        const existing = this.typeCache.get<GraphQLObjectType>(name);
+        if (existing) return existing;
+        const modelDef = this.modelHelper.getModelDef(model);
+        const fields: any = {};
+        for (const [fieldName, field] of Object.entries(modelDef.fields)) {
+            if (this.modelHelper.isScalar(field) && !field.array) {
+                fields[fieldName] = { type: this.typeResolver.fieldToGraphQLType(field, true) };
+            }
+        }
+        const output = new GraphQLObjectType({ name, fields });
+        this.typeCache.set(name, output);
+        return output;
+    }
+
+    getMaxAggOutput(model: string): GraphQLObjectType {
+        const name = `${model}MaxAggregateOutput`;
+        const existing = this.typeCache.get<GraphQLObjectType>(name);
+        if (existing) return existing;
+        const modelDef = this.modelHelper.getModelDef(model);
+        const fields: any = {};
+        for (const [fieldName, field] of Object.entries(modelDef.fields)) {
+            if (this.modelHelper.isScalar(field) && !field.array) {
+                fields[fieldName] = { type: this.typeResolver.fieldToGraphQLType(field, true) };
+            }
+        }
+        const output = new GraphQLObjectType({ name, fields });
+        this.typeCache.set(name, output);
+        return output;
+    }
+
+    getAggregateOutput(model: string): GraphQLObjectType {
+        const name = `${model}AggregateOutput`;
+        const existing = this.typeCache.get<GraphQLObjectType>(name);
+        if (existing) return existing;
+        const output = new GraphQLObjectType({
+            name,
+            fields: () => ({
+                _count: { type: this.getCountAggOutput(model) },
+                _avg: { type: this.getAvgAggOutput(model) },
+                _sum: { type: this.getSumAggOutput(model) },
+                _min: { type: this.getMinAggOutput(model) },
+                _max: { type: this.getMaxAggOutput(model) },
+            }),
+        });
+        this.typeCache.set(name, output);
+        return output;
+    }
+
+    getGroupByOutput(model: string): GraphQLObjectType {
+        const name = `${model}GroupByOutput`;
+        const existing = this.typeCache.get<GraphQLObjectType>(name);
+        if (existing) return existing;
+        const output = new GraphQLObjectType({
+            name,
+            fields: () => {
+                const modelDef = this.modelHelper.getModelDef(model);
+                const fields: any = {};
+                // Scalar fields
+                for (const [fieldName, field] of Object.entries(modelDef.fields)) {
+                    if (this.modelHelper.isScalar(field) && !field.array) {
+                        fields[fieldName] = { type: this.typeResolver.fieldToGraphQLType(field, true) };
+                    }
+                }
+                // Aggregate sub-objects
+                fields._count = { type: this.getCountAggOutput(model) };
+                fields._avg = { type: this.getAvgAggOutput(model) };
+                fields._sum = { type: this.getSumAggOutput(model) };
+                fields._min = { type: this.getMinAggOutput(model) };
+                fields._max = { type: this.getMaxAggOutput(model) };
+                return fields;
+            },
+        });
         this.typeCache.set(name, output);
         return output;
     }

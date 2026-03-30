@@ -50,7 +50,6 @@ export class DirectiveExtractor {
         variables: any,
         depth: number
     ): ParseResult {
-        this.securityPolicy.checkDepth(depth);
 
         const prismaSelect: any = {};
         const transformPlan: TransformPlan = {};

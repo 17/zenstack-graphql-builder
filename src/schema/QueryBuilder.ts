@@ -98,34 +98,34 @@ export class QueryBuilder {
             };
 
             queryFields[`${lower}_aggregate`] = {
-                type: JsonScalar,
+                type: this.outputTypeBuilder.getAggregateOutput(model),
                 args: {
                     where: { type: this.inputTypeBuilder.getWhereInput(model) },
                     orderBy: { type: new GraphQLList(new GraphQLNonNull(this.inputTypeBuilder.getOrderByInput(model))) },
                     cursor: { type: this.inputTypeBuilder.getWhereUniqueInput(model) },
                     take: { type: GraphQLInt },
                     skip: { type: GraphQLInt },
-                    _count: { type: this.inputTypeBuilder.getCountAggInput(model) },
-                    _avg: { type: this.inputTypeBuilder.getAggInput(model) },
-                    _sum: { type: this.inputTypeBuilder.getAggInput(model) },
-                    _min: { type: this.inputTypeBuilder.getAggInput(model) },
-                    _max: { type: this.inputTypeBuilder.getAggInput(model) },
+                    // _count: { type: this.inputTypeBuilder.getCountAggInput(model) },
+                    // _avg: { type: this.inputTypeBuilder.getAggInput(model) },
+                    // _sum: { type: this.inputTypeBuilder.getAggInput(model) },
+                    // _min: { type: this.inputTypeBuilder.getAggInput(model) },
+                    // _max: { type: this.inputTypeBuilder.getAggInput(model) },
                 },
             };
 
             queryFields[`${lower}_groupBy`] = {
-                type: JsonScalar,
+                type: this.outputTypeBuilder.getGroupByOutput(model),
                 args: {
                     by: { type: new GraphQLList(new GraphQLNonNull(this.outputTypeBuilder.getDistinctEnum(model))) },
                     where: { type: this.inputTypeBuilder.getWhereInput(model) },
                     having: { type: this.inputTypeBuilder.getWhereInput(model) },
                     take: { type: GraphQLInt },
                     skip: { type: GraphQLInt },
-                    _count: { type: this.inputTypeBuilder.getCountAggInput(model) },
-                    _avg: { type: this.inputTypeBuilder.getAggInput(model) },
-                    _sum: { type: this.inputTypeBuilder.getAggInput(model) },
-                    _min: { type: this.inputTypeBuilder.getAggInput(model) },
-                    _max: { type: this.inputTypeBuilder.getAggInput(model) },
+                    // _count: { type: this.inputTypeBuilder.getCountAggInput(model) },
+                    // _avg: { type: this.inputTypeBuilder.getAggInput(model) },
+                    // _sum: { type: this.inputTypeBuilder.getAggInput(model) },
+                    // _min: { type: this.inputTypeBuilder.getAggInput(model) },
+                    // _max: { type: this.inputTypeBuilder.getAggInput(model) },
                 },
             };
 

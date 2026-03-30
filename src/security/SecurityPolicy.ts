@@ -43,20 +43,4 @@ export class SecurityPolicy {
         }
         return sanitized;
     }
-
-    /**
-     * 校验查询深度
-     */
-    checkDepth(depth: number): void {
-        if (depth >= this.options.maxDepth) {
-            if (this.options.throwOnError) {
-                throw new Error(`[Security Violation] Query depth limit reached (${this.options.maxDepth})`);
-            }
-            // 如果不抛出异常，为了避免无限递归，仍然需要一个截止点，这由 Extractor 中的判断处理
-        }
-    }
-
-    getMaxDepth(): number {
-        return this.options.maxDepth;
-    }
 }

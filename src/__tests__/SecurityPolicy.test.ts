@@ -28,8 +28,4 @@ describe('SecurityPolicy', () => {
         expect(sanitized.where).toEqual({ id: 1 });
     });
 
-    it('should throw error on depth limit if throwOnError is true', () => {
-        const policy = new SecurityPolicy({ maxDepth: 5, throwOnError: true });
-        expect(() => policy.checkDepth(5)).toThrow(/Query depth limit reached/);
-    });
 });

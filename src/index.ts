@@ -53,7 +53,6 @@ export class ZenStackGraphQLBuilder {
         this.zenSchema = config.schema;
         this.modelNames = Object.keys(config.schema.models);
         this.options = {
-            maxDepth: 9,
             maxTake: 100,
             throwOnError: false,
             useJSONIntScalar: false,

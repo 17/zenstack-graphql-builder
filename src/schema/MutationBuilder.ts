@@ -57,7 +57,7 @@ export class MutationBuilder {
             mutationFields[`${lower}_update`] = {
                 type: this.outputTypeBuilder.getOutputType(model),
                 args: {
-                    where: { type: new GraphQLNonNull(this.inputTypeBuilder.getWhereUniqueInput(model)) },
+                    where: { type: new GraphQLNonNull(this.inputTypeBuilder.getWhereInput(model)) },
                     data: { type: new GraphQLNonNull(this.inputTypeBuilder.getUpdateInput(model)) },
                     omit: { type: this.inputTypeBuilder.getOmitInput(model) },
                 },
@@ -134,7 +134,7 @@ export class MutationBuilder {
             mutationFields[`${lower}_delete`] = {
                 type: this.outputTypeBuilder.getOutputType(model),
                 args: {
-                    where: { type: new GraphQLNonNull(this.inputTypeBuilder.getWhereUniqueInput(model)) },
+                    where: { type: new GraphQLNonNull(this.inputTypeBuilder.getWhereInput(model)) },
                     omit: { type: this.inputTypeBuilder.getOmitInput(model) },
                 },
             };
