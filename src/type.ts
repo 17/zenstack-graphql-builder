@@ -1221,15 +1221,15 @@ export class GraphQLTypeFactory<
                     result[field] = { type: fieldType };
                 } else {
                     let fieldType: GraphQLInputType = this.makeScalarType(fieldDef.type, fieldDef.array, fieldDef.optional || !!fieldHasDefaultValue(fieldDef));
-                    // if (fieldDef.array) {
-                    //     // 数组
-                    //     fieldType = new GraphQLList(fieldType);
-                    // }
-                    // if (fieldDef.optional || fieldHasDefaultValue(fieldDef)) {
-                    //     // 可选
-                    // } else {
-                    //     fieldType = new GraphQLNonNull(fieldType);
-                    // }
+                    if (fieldDef.array) {
+                        // 数组
+                        fieldType = new GraphQLList(fieldType);
+                    }
+                    if (fieldDef.optional || fieldHasDefaultValue(fieldDef)) {
+                        // 可选
+                    } else {
+                        fieldType = new GraphQLNonNull(fieldType);
+                    }
                     // if (fieldDef.optional && fieldDef.type === 'Json') {
                     //     // 允许 DbNull，这里忽略，用标量处理
                     // }
