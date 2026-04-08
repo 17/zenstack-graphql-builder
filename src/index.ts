@@ -123,6 +123,7 @@ export class ZenStackGraphQLBuilder<
         selectionSet: SelectionSetNode | undefined,
         fragments: Record<string, FragmentDefinitionNode>,
         variables: any,
+        isAggregation: boolean,
         depth: number
     ): { prismaSelect: any; transformPlan: TransformPlan | null } {
         const prismaSelect: any = {};
@@ -141,7 +142,7 @@ export class ZenStackGraphQLBuilder<
                         ? fragments[selection.name.value]
                         : selection;
                 if (fragment?.selectionSet) {
-                    const result = this.traverseAstNode(fragment.selectionSet, fragments, variables, depth);
+                    const result = this.traverseAstNode(fragment.selectionSet, fragments, variables, isAggregation, depth);
                     Object.assign(prismaSelect, result.prismaSelect);
                     if (result.transformPlan) {
                         Object.assign(transformPlan, result.transformPlan);
@@ -170,15 +171,16 @@ export class ZenStackGraphQLBuilder<
                         selection.selectionSet,
                         fragments,
                         variables,
+                        isAggregation,
                         depth - 1
                     );
                     if (!subResult.prismaSelect && !subResult.transformPlan) {
                         continue;
                     }
 
-                    const isAggregationField = ['_avg', '_count', '_max', '_min', '_sum'].includes(fieldName);
+                    // const isAggregationField = ['_avg', '_count', '_max', '_min', '_sum'].includes(fieldName);
                     prismaSelect[fieldName] = {
-                        ...(isAggregationField ? subResult.prismaSelect : { select: subResult.prismaSelect }),
+                        ...(isAggregation ? subResult.prismaSelect : { select: subResult.prismaSelect }),
                         ...validatedArgs,
                     };
 
@@ -209,12 +211,12 @@ export class ZenStackGraphQLBuilder<
     /**
      * 从 GraphQL Resolver 的 info 参数中解析 Prisma select 与指令转换计划
      */
-    parseSelectionAndPlan(info: any, variables: any = {}, depth: number = Number.MAX_SAFE_INTEGER): ParseResult {
+    parseSelectionAndPlan(info: any, variables: any = {}, isAggregation: boolean = false, depth: number = Number.MAX_SAFE_INTEGER): ParseResult {
         const { fieldNodes, fragments } = info;
         if (!fieldNodes || fieldNodes.length === 0) {
             return { prismaSelect: undefined, transformPlan: null };
         }
-        return this.traverseAstNode(fieldNodes[0].selectionSet, fragments, variables, depth);
+        return this.traverseAstNode(fieldNodes[0].selectionSet, fragments, variables, isAggregation, depth);
     }
 
     /**
@@ -271,16 +273,18 @@ export class ZenStackGraphQLBuilder<
                         ...contextOptions,
                     };
 
+                    const isAggregation = operation === 'aggregate';
                     const { prismaSelect, transformPlan } = this.parseSelectionAndPlan(
                         info,
                         info.variableValues,
+                        isAggregation,
                         options.throwOnError ? options.maxDepth : Number.MAX_SAFE_INTEGER
                     );
 
                     const validatedArgs = {
                         ...args,
-                        ...(operation === 'groupBy' ? {} :
-                            operation === 'aggregate' ? prismaSelect : { select: prismaSelect }),
+                        ...(['exists', 'groupBy'].includes(operation) ? {} :
+                            isAggregation ? prismaSelect : { select: prismaSelect }),
                     };
 
                     const makeSchema = client.$zod[`make${operation.replace(/\b\w/g, char => char.toUpperCase())}Schema`](
