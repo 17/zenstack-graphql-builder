@@ -9,8 +9,8 @@ This builder supports fetching, filtering, ordering, relations, caching, custom 
 Features
 --------
 
-- **🚀 Complete CRUD**: Generates `findMany`, `findUnique`, `create`, `update`, `delete`, `upsert`, aggregates, grouping, etc.
-- **🛡️ Security Policies**: Limit query depths and items take length (mitigation for recursive/expensive queries).
+- **🚀 Complete CRUD**: Generates `findMany`, `findUnique`, `create`, `update`, `delete`, `upsert`, etc.
+- **🛡️ Security Policies**: Limit query depths (mitigation for recursive/expensive queries).
 - **📝 Custom Directives**: Expose your own directives (e.g. `@upperCase`) naturally using an extensible registry.
 - **🔄 Relation Operations**: Build deep nested creates, updates, and filtering intuitively.
 
@@ -50,19 +50,26 @@ model Post {
 ### 2\. Generate the GraphQL schema and resolver
 
 ```typescript
-import { ZenStackGraphQLBuilder } from '@zenstack/graphql';
-import { schema as zenSchema } from './zenstack/schema'; // your parsed ZenStack model
+import { ZenStackGraphQLBuilder } from 'zenstack-graphql-builder';
+import { ZenStackClient } from '@zenstackhq/orm';
+import schema from './zenstack/schema'; // your parsed ZenStack model
 
-const builder = new ZenStackGraphQLBuilder({
-  schema: zenSchema,
+// Option 1: Using ZenStackClient instance
+const client = new ZenStackClient(schema);
+const builder = new ZenStackGraphQLBuilder(client, {
   options: {
-    maxTake: 50,
     maxDepth: 10,
   }
-
 });
 
-const schema = builder.getSchema();
+// Option 2: Using schema directly
+const builder = new ZenStackGraphQLBuilder(schema, {
+  options: {
+    maxDepth: 10,
+  }
+});
+
+const graphqlSchema = builder.getSchema();
 const rootValue = builder.getRootResolver();
 
 // Use with any GraphQL server (express-graphql, Apollo, etc.)
@@ -99,61 +106,27 @@ mutation {
 Configuration
 -------------
 
-The `ZenStackGraphQLBuilder` constructor accepts a single configuration object with the following properties:
+The `ZenStackGraphQLBuilder` constructor accepts two parameters:
+
+1. **clientOrSchema**: Either a `ZenStackClient` instance or a `SchemaDef` object (required)
+2. **config**: Configuration object with the following properties:
 
 | Property | Type | Description |
 | --- | --- | --- |
-| `schema` | `ZenSchema` | Your parsed ZenStack model definition (required). |
 | `options` | `ZenStackOptions` | Security and behavior options (see below). |
 | `directives` | `Record<string, DirectiveHandler>` | Map of custom directive names to resolver functions. |
 | `directiveDefinitions` | `GraphQLDirective[]` | Array of GraphQL directive definitions for custom directives. |
-| `operations` | `CrudOperation[]` | List of CRUD operations to include (defaults to all). |
 | `scalars` | `Record<string, GraphQLScalarType>` | Custom scalar type overrides. |
 
-### `options` (Security Policy)
+### `options` (Security Policy)
 
 ```typescript
-interface ZenStackOptions {
-  maxTake?: number;        // maximum number of records allowed in take/first/last (default: 100)
+interface ZenStackGraphQLBuilderOptions {
   maxDepth?: number;        // maximum nesting depth for queries (default: 9)
   throwOnError?: boolean;   // throw on security violations instead of silently clamping (default: false)
-  useJSONIntScalar?: boolean; // use JSONInt scalar for Int fields to preserve large integers (default: false)
+  useBigIntScalar?: boolean; // use BigInt scalar for Int fields to preserve large integers (default: false)
 }
 ```
-### Available Operations
-
-By default, all CRUD operations are enabled. You can restrict them by passing an array of operation names:
-
-```typescript
-const builder = new ZenStackGraphQLBuilder({
-  schema: mySchema,
-  operations: ['findMany', 'create', 'update', 'delete'],
-});
-```
-
-Supported operations:
-
--   `findUnique` / `findUniqueOrThrow`
-
--   `findFirst` / `findFirstOrThrow`
-
--   `findMany`
-
--   `create` / `createMany` / `createManyAndReturn`
-
--   `update` / `updateMany` / `updateManyAndReturn`
-
--   `upsert`
-
--   `delete` / `deleteMany`
-
--   `count`
-
--   `aggregate`
-
--   `groupBy`
-
--   `exists`
 
 Custom Directives
 -----------------
@@ -183,8 +156,7 @@ const directives = {
 ### 3\. Pass both to the builder
 
 ```typescript
-const builder = new ZenStackGraphQLBuilder({
-  schema: mySchema,
+const builder = new ZenStackGraphQLBuilder(schema, {
   directives,
   directiveDefinitions: [upperDirective],
 });
@@ -212,13 +184,11 @@ Security
 
 The library includes built‑in protections to prevent abusive queries:
 
--   Depth limiting -- prevents excessively nested queries (default max depth = 9)
+-   Depth limiting -- prevents excessively nested queries (default max depth = 9)
 
--   Take limiting -- clamps `take`, `first`, `last`, and `limit` arguments (default max = 100)
+-   Argument validation -- all arguments are passed through the security policy before reaching your database
 
--   Argument validation -- all arguments are passed through the security policy before reaching your database
-
-You can configure these limits via the `options` object.
+You can configure these limits via the `options` object.
 
 Type System
 -----------
@@ -280,9 +250,10 @@ query {
 query {
   post_aggregate(
     where: { published: { equals: true } }
+  ) {
     _count: { _all: true, authorId: true }
     _avg: { id: true }
-  )
+  }
 }
 ```
 

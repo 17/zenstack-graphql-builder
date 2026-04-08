@@ -1,154 +1,325 @@
-import { GraphQLSchema, GraphQLDirective } from 'graphql';
-import { TypeCache } from './types/TypeCache';
-import { FilterBuilder } from './types/FilterBuilder';
-import { EnumBuilder } from './types/EnumBuilder';
-import { InputTypeBuilder } from './types/InputTypeBuilder';
-import { OutputTypeBuilder } from './types/OutputTypeBuilder';
-import { DirectiveRegistry, DirectiveHandler } from './directives/DirectiveRegistry';
-import { DirectiveExtractor } from './directives/DirectiveExtractor';
-import { DirectiveApplier } from './directives/DirectiveApplier';
-import { SecurityPolicy, SecurityOptions } from './security/SecurityPolicy';
-import { QueryBuilder } from './schema/QueryBuilder';
-import { MutationBuilder } from './schema/MutationBuilder';
-import { SchemaGenerator } from './schema/SchemaGenerator';
-import { RootResolver, AllCrudOperations } from './resolvers/RootResolver';
-import { ModelHelper, TypeResolver } from './utils/schemaHelper';
-import { GraphQLScalarType } from 'graphql';
 import {
-    DateTimeScalar,
-    JsonScalar,
-    BigIntScalar,
-    BytesScalar,
-    DecimalScalar,
-    JSONIntScalar,
-} from './types/scalars';
-import { GraphQLString, GraphQLInt, GraphQLFloat, GraphQLBoolean, GraphQLID } from 'graphql';
+    GraphQLSchema, valueFromASTUntyped, SelectionSetNode,
+    FragmentDefinitionNode, specifiedDirectives
+} from 'graphql';
 
-export interface BuilderOptions extends Partial<SecurityOptions> {
-    useJSONIntScalar?: boolean;
-}
+import { CoreCrudOperations as AllCrudOperations } from '@zenstackhq/orm';
+import {
+    type ClientOptions,
+    type ExtQueryArgsBase,
+} from '@zenstackhq/orm';
+import {
+    type SchemaDef,
+} from '@zenstackhq/schema';
+
+import Scalars from './scalars'
+import { GraphQLTypeFactory } from './type'
 
 export interface ZenStackGraphQLBuilderConfig {
-    schema: any; // ZenStack SchemaDef
-    options?: BuilderOptions;
-    directives?: Record<string, DirectiveHandler>;
-    directiveDefinitions?: GraphQLDirective[];
-    operations?: string[];
-    scalars?: Record<string, GraphQLScalarType>;
+    options?: ZenStackGraphQLBuilderOptions;
+    directives?: any;
+    directiveDefinitions?: any;
+    scalars?: any;
 }
 
-export class ZenStackGraphQLBuilder {
-    private zenSchema: any;
-    private modelNames: string[];
-    public options: BuilderOptions;
-    private customDirectives: Record<string, DirectiveHandler>;
-    private directiveDefinitions: GraphQLDirective[];
-    private operations: string[];
-    private scalars: Record<string, GraphQLScalarType>;
+export interface ZenStackGraphQLBuilderOptions {
+    maxDepth?: number;
+    throwOnError?: boolean;
+    useBigIntScalar?: boolean;
+}
 
-    private outputSchema: GraphQLSchema | null = null;
-    private outputRootValue: Record<string, Function> | null = null;
+export interface DirectiveConfig {
+    name: string;
+    args: any;
+}
 
-    constructor(config: ZenStackGraphQLBuilderConfig) {
-        this.zenSchema = config.schema;
-        this.modelNames = Object.keys(config.schema.models);
-        this.options = {
-            maxTake: 100,
-            throwOnError: false,
-            useJSONIntScalar: false,
-            ...config.options,
-        };
-        this.customDirectives = config.directives || {};
-        this.directiveDefinitions = config.directiveDefinitions || [];
-        this.operations = config.operations || AllCrudOperations;
-        this.scalars = this.initializeScalars(config.scalars);
+export interface TransformPlan {
+    [fieldName: string]: {
+        directives?: DirectiveConfig[] | null;
+        nested?: TransformPlan | null;
+    };
+}
 
-        this.build();
-    }
+export interface ParseResult {
+    prismaSelect: any;
+    transformPlan: TransformPlan | null;
+}
 
-    private initializeScalars(customScalars: Record<string, GraphQLScalarType> = {}) {
-        return {
-            String: GraphQLString,
-            Int: this.options.useJSONIntScalar ? JSONIntScalar : GraphQLInt,
-            Float: GraphQLFloat,
-            Boolean: GraphQLBoolean,
-            ID: GraphQLID,
-            DateTime: DateTimeScalar,
-            Json: JsonScalar,
-            BigInt: BigIntScalar,
-            Bytes: BytesScalar,
-            Decimal: DecimalScalar,
-            ...customScalars,
-        };
-    }
+export type DirectiveHandler = (value: any, args: any, vars: any, fieldName: string) => any | Promise<any>;
 
-    private build() {
-        // 1. Core / Types Layer
-        const typeCache = new TypeCache();
-        const modelHelper = new ModelHelper(this.zenSchema);
-        const enumBuilder = new EnumBuilder(typeCache);
-        const typeResolver = new TypeResolver(typeCache, this.scalars);
+export class ZenStackGraphQLBuilder<
+    Schema extends SchemaDef,
+    Options extends ClientOptions<Schema> = ClientOptions<Schema>,
+    ExtQueryArgs extends ExtQueryArgsBase = {},
+> {
+    readonly schema: SchemaDef;
+    private builderConfig: ZenStackGraphQLBuilderConfig;
+    private options: ZenStackGraphQLBuilderOptions;
+    private scalars: any;
+    private types: GraphQLTypeFactory<SchemaDef, any, any>;
+    private _schema: GraphQLSchema | null = null;
+    private _rootResolver: Record<string, Function> | null = null;
+    private directiveHandlers: Record<string, DirectiveHandler>;
 
-        // 初始化并缓存预定义枚举
-        enumBuilder.buildEnums(this.zenSchema);
-
-        const filterBuilder = new FilterBuilder(typeCache, this.scalars);
-        const inputTypeBuilder = new InputTypeBuilder(typeCache, filterBuilder, modelHelper, typeResolver);
-        const outputTypeBuilder = new OutputTypeBuilder(typeCache, modelHelper, typeResolver, inputTypeBuilder);
-
-        // 预热所有相关类型的构建（与原 index.js 保持一致的行为）
-        for (const model of this.modelNames) {
-            outputTypeBuilder.getOutputType(model);
-            inputTypeBuilder.getWhereInput(model);
-            inputTypeBuilder.getOrderByInput(model);
-            inputTypeBuilder.getCreateInput(model);
-            inputTypeBuilder.getUpdateInput(model);
-            inputTypeBuilder.getWhereUniqueInput(model);
-            inputTypeBuilder.getCreateManyInput(model);
-            outputTypeBuilder.getCountAggOutput(model);
-            outputTypeBuilder.getDistinctEnum(model);
-            inputTypeBuilder.getOmitInput(model);
-            inputTypeBuilder.getCountAggInput(model);
-            inputTypeBuilder.getAggInput(model);
-            inputTypeBuilder.getConnectOrCreateInput(model);
-            inputTypeBuilder.getUpdateNestedInput(model);
-            inputTypeBuilder.getUpdateManyNestedInput(model);
-            inputTypeBuilder.getUpsertNestedInput(model);
+    constructor(clientOrSchema: any, config?: ZenStackGraphQLBuilderConfig) {
+        if ('$schema' in clientOrSchema) {
+            this.schema = clientOrSchema.$schema;
+        } else {
+            this.schema = clientOrSchema;
         }
-        outputTypeBuilder.getAffectedRowsOutput();
 
-        // 2. Directives Layer
-        const directiveRegistry = new DirectiveRegistry(this.customDirectives, this.directiveDefinitions);
+        this.builderConfig = config || ({} as ZenStackGraphQLBuilderConfig);
+        this.options = {
+            maxDepth: 9,
+            throwOnError: false,
+            useBigIntScalar: false,
+            ...(config?.options || {}),
+        } as ZenStackGraphQLBuilderOptions;
 
-        // 3. Schema Layer
-        const queryBuilder = new QueryBuilder(typeCache, inputTypeBuilder, outputTypeBuilder);
-        const mutationBuilder = new MutationBuilder(typeCache, inputTypeBuilder, outputTypeBuilder);
-        const schemaGenerator = new SchemaGenerator(
-            queryBuilder,
-            mutationBuilder,
-            typeCache,
-            directiveRegistry,
-            this.modelNames
-        );
-
-        this.outputSchema = schemaGenerator.generate();
-
-        // 4. Resolvers Layer
-        const dummyPolicy = new SecurityPolicy(this.options);
-        const extractor = new DirectiveExtractor(dummyPolicy);
-        const applier = new DirectiveApplier(directiveRegistry);
-        const rootResolver = new RootResolver(this.modelNames, this.operations, extractor, applier);
-
-        this.outputRootValue = rootResolver.buildRootValue();
+        this.scalars = { ...Scalars, ...this.builderConfig.scalars, Int: this.options.useBigIntScalar ? Scalars.BigInt : Scalars.Int };
+        this.directiveHandlers = this.builderConfig?.directives || {};
+        this.types = new GraphQLTypeFactory(this.schema, this.scalars);
+        this._schema = this.buildGraphQLSchema();
+        this._rootResolver = this.createRootResolver();
     }
 
+    get modelNames() {
+        return Object.keys(this.types.schema.models);
+    }
+
+    /**
+     * 构建 GraphQL Schema 对象
+     */
+    buildGraphQLSchema(): GraphQLSchema {
+        const queryType = this.types.makeQueryType();
+        const mutationType = this.types.makeMutationType();
+
+        return new GraphQLSchema({
+            query: queryType,
+            mutation: mutationType,
+            directives: [...specifiedDirectives, ...this.builderConfig?.directiveDefinitions || []],
+            types: [
+                ...(Object.values(this.scalars || {}) as any),
+            ],
+        });
+    }
+
+    /**
+     * 解析 AST 节点中的参数值
+     */
+    parseAstArguments(nodes: readonly any[] | undefined, variables: any): any {
+        if (!nodes || nodes.length === 0) return null;
+        const args: any = {};
+        for (const node of nodes) {
+            args[node.name.value] = valueFromASTUntyped(node.value, variables);
+        }
+        return args;
+    }
+
+    /**
+     * 递归遍历 GraphQL AST 选择集，提取 Prisma select 对象与指令执行计划
+     */
+    traverseAstNode(
+        selectionSet: SelectionSetNode | undefined,
+        fragments: Record<string, FragmentDefinitionNode>,
+        variables: any,
+        depth: number
+    ): { prismaSelect: any; transformPlan: TransformPlan | null } {
+        const prismaSelect: any = {};
+        const transformPlan: TransformPlan = {};
+        let hasDirectivesInTree = false;
+
+        if (!selectionSet || depth <= 0) {
+            return { prismaSelect: undefined, transformPlan: null };
+        }
+
+        for (const selection of selectionSet.selections) {
+            // 处理片段 (Fragments)
+            if (selection.kind === 'FragmentSpread' || selection.kind === 'InlineFragment') {
+                const fragment =
+                    selection.kind === 'FragmentSpread'
+                        ? fragments[selection.name.value]
+                        : selection;
+                if (fragment?.selectionSet) {
+                    const result = this.traverseAstNode(fragment.selectionSet, fragments, variables, depth);
+                    Object.assign(prismaSelect, result.prismaSelect);
+                    if (result.transformPlan) {
+                        Object.assign(transformPlan, result.transformPlan);
+                        hasDirectivesInTree = true;
+                    }
+                }
+                continue;
+            }
+
+            // 处理字段
+            if (selection.kind === 'Field') {
+                const fieldName = selection.name.value;
+
+                const args = this.parseAstArguments(selection.arguments, variables);
+                const validatedArgs = args;
+
+                const directiveConfigs =
+                    selection.directives?.map((d) => ({
+                        name: d.name.value,
+                        args: this.parseAstArguments(d.arguments, variables) || {},
+                    })) || [];
+
+                if (selection.selectionSet) {
+                    // 嵌套字段
+                    const subResult = this.traverseAstNode(
+                        selection.selectionSet,
+                        fragments,
+                        variables,
+                        depth - 1
+                    );
+                    if (!subResult.prismaSelect && !subResult.transformPlan) {
+                        continue;
+                    }
+
+                    const isAggregationField = ['_avg', '_count', '_max', '_min', '_sum'].includes(fieldName);
+                    prismaSelect[fieldName] = {
+                        ...(isAggregationField ? subResult.prismaSelect : { select: subResult.prismaSelect }),
+                        ...validatedArgs,
+                    };
+
+                    if (directiveConfigs.length > 0 || subResult.transformPlan) {
+                        transformPlan[fieldName] = {
+                            directives: directiveConfigs.length > 0 ? directiveConfigs : null,
+                            nested: subResult.transformPlan,
+                        };
+                        hasDirectivesInTree = true;
+                    }
+                } else {
+                    // 叶子字段
+                    prismaSelect[fieldName] = true;
+                    if (directiveConfigs.length > 0) {
+                        transformPlan[fieldName] = { directives: directiveConfigs };
+                        hasDirectivesInTree = true;
+                    }
+                }
+            }
+        }
+
+        return {
+            prismaSelect: Object.keys(prismaSelect).length > 0 ? prismaSelect : undefined,
+            transformPlan: hasDirectivesInTree ? transformPlan : null,
+        };
+    }
+
+    /**
+     * 从 GraphQL Resolver 的 info 参数中解析 Prisma select 与指令转换计划
+     */
+    parseSelectionAndPlan(info: any, variables: any = {}, depth: number = Number.MAX_SAFE_INTEGER): ParseResult {
+        const { fieldNodes, fragments } = info;
+        if (!fieldNodes || fieldNodes.length === 0) {
+            return { prismaSelect: undefined, transformPlan: null };
+        }
+        return this.traverseAstNode(fieldNodes[0].selectionSet, fragments, variables, depth);
+    }
+
+    /**
+     * 对 Prisma 返回数据递归应用指令转换
+     */
+    async applyDirectives(data: any, plan: TransformPlan | null, vars: any = {}): Promise<any> {
+        if (!data || !plan) return data;
+
+        if (Array.isArray(data)) {
+            return Promise.all(data.map((item) => this.applyDirectives(item, plan, vars)));
+        }
+
+        const result = { ...data };
+        const tasks = Object.entries(plan).map(async ([fieldName, config]) => {
+            if (!config || result[fieldName] === undefined) return;
+
+            let value = result[fieldName];
+
+            // 1. 递归处理嵌套字段
+            if (config.nested && value !== null) {
+                value = await this.applyDirectives(value, config.nested, vars);
+            }
+
+            // 2. 按序应用当前字段指令
+            if (config.directives?.length) {
+                for (const dir of config.directives) {
+                    const handler = this.directiveHandlers[dir.name];
+                    if (handler) {
+                        value = await handler(value, dir.args, vars, fieldName);
+                    }
+                }
+            }
+            result[fieldName] = value;
+        });
+
+        await Promise.all(tasks);
+        return result;
+    }
+
+    /**
+     * 创建根解析器对象，包含所有模型的 CRUD 操作解析函数
+     */
+    createRootResolver(): Record<string, Function> {
+        const rootResolver: Record<string, Function> = {};
+
+        for (const model of this.modelNames) {
+            const modelNameLower = model[0].toLowerCase() + model.slice(1);
+
+            for (let operation of AllCrudOperations) {
+                rootResolver[`${modelNameLower}_${operation}`] = async (args: any, contextValue: any, info: any) => {
+                    const { client, options: contextOptions } = contextValue;
+                    const options = {
+                        ...this.options,
+                        ...contextOptions,
+                    };
+
+                    const { prismaSelect, transformPlan } = this.parseSelectionAndPlan(
+                        info,
+                        info.variableValues,
+                        options.throwOnError ? options.maxDepth : Number.MAX_SAFE_INTEGER
+                    );
+
+                    const validatedArgs = {
+                        ...args,
+                        ...(operation === 'groupBy' ? {} :
+                            operation === 'aggregate' ? prismaSelect : { select: prismaSelect }),
+                    };
+
+                    const makeSchema = client.$zod[`make${operation.replace(/\b\w/g, char => char.toUpperCase())}Schema`](
+                        model,
+                        { relationDepth: options.maxDepth }
+                    );
+
+                    const validationResult = makeSchema.safeParse(validatedArgs);
+                    if (!validationResult.success) {
+                        const issues = validationResult.error?.issues
+                            ?.map((i: any) => `${i.path.join('.')}: ${i.message}`)
+                            .join('; ');
+                        throw new Error(
+                            `[Validation Error] Query args validation failed for ${model}.${operation}: ${issues || 'Unknown error'}`
+                        );
+                    }
+
+                    const rawResult = await client[modelNameLower][operation](validatedArgs);
+                    return await this.applyDirectives(rawResult, transformPlan, info.variableValues);
+                };
+            }
+        }
+
+        return rootResolver;
+    }
+
+    /**
+     * 获取构建好的 GraphQL Schema
+     */
     getSchema(): GraphQLSchema {
-        if (!this.outputSchema) throw new Error('Schema not generated yet');
-        return this.outputSchema;
+        if (!this._schema) throw new Error('Schema not generated yet');
+        return this._schema;
     }
 
+    /**
+     * 获取构建好的根解析器
+     */
     getRootResolver(): Record<string, Function> {
-        if (!this.outputRootValue) throw new Error('RootResolver not generated yet');
-        return this.outputRootValue;
+        if (!this._rootResolver) throw new Error('RootResolver not generated yet');
+        return this._rootResolver;
     }
 }
