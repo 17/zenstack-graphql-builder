@@ -15,9 +15,7 @@ import {
     type ExtQueryArgsBase,
     type CoreCrudOperations,
     type RuntimePlugin,
-    CoreCrudOperations as AllCrudOperations,
-    CoreReadOperations as AllReadOperations,
-    CoreWriteOperations as AllWriteOperations
+    CoreCrudOperations as AllCrudOperations
 } from '@zenstackhq/orm';
 
 import {
@@ -41,7 +39,6 @@ import {
     GraphQLInputObjectTypeConfig,
     GraphQLEnumValueConfigMap,
 } from 'graphql';
-import Decimal from 'decimal.js';
 
 /**
  * The types of fields that are numeric.
@@ -175,28 +172,21 @@ export type CreateSchemaOptions = {
     relationDepth?: number;
 };
 
-
 export class GraphQLTypeFactory<
     Schema extends SchemaDef,
-    Options extends ClientOptions<Schema> = ClientOptions<Schema>,
-    ExtQueryArgs extends ExtQueryArgsBase = {},
+    Options extends ClientOptions<Schema> = ClientOptions<Schema>
 > {
     readonly schema: Schema;
     readonly options: Options;
     readonly scalars: any;
     readonly _cache = new Map<string, any>();
+    readonly formatFieldName: Function;
 
-    constructor(client: ClientContract<Schema, Options, ExtQueryArgs, any>, scalars: any);
-    constructor(schema: Schema, scalars: any, options?: Options);
-    constructor(clientOrSchema: any, scalars: any, options?: Options) {
-        if ('$schema' in clientOrSchema) {
-            this.schema = clientOrSchema.$schema;
-            this.options = clientOrSchema.$options;
-        } else {
-            this.schema = clientOrSchema;
-            this.options = options || ({} as Options);
-        }
+    constructor(schema: Schema, scalars: any, options: Options, formatFieldName: Function) {
+        this.schema = schema;
+        this.options = options || ({} as Options);
         this.scalars = scalars;
+        this.formatFieldName = formatFieldName;
     }
 
     private get plugins(): RuntimePlugin<Schema, any, any, any>[] {
@@ -525,43 +515,45 @@ export class GraphQLTypeFactory<
         const typeDef = getTypeDef(this.schema, type);
         invariant(typeDef, `Type definition "${type}" not found in schema`);
 
-        const fields: GraphQLInputFieldConfigMap = {};
+        const allFields = () => {
+            const fields: GraphQLInputFieldConfigMap = {};
 
-        if (!array) {
-            for (const [fieldName, fieldDef] of Object.entries(typeDef.fields)) {
-                if (this.isTypeDefType(fieldDef.type)) {
-                    fields[fieldName] = { type: this.makeTypedJsonFilterType(model, fieldDef) };
-                } else {
-                    const enumDef = getEnum(this.schema, fieldDef.type);
-                    if (enumDef) {
-                        fields[fieldName] = { type: this.makeEnumFilterType(model, fieldDef, false) };
-                    } else if (fieldDef.array) {
-                        fields[fieldName] = { type: this.makeArrayFilterType(model, fieldDef) };
+            if (!array) {
+                for (const [fieldName, fieldDef] of Object.entries(typeDef.fields)) {
+                    if (this.isTypeDefType(fieldDef.type)) {
+                        fields[fieldName] = { type: this.makeTypedJsonFilterType(model, fieldDef) };
                     } else {
-                        fields[fieldName] = { type: this.makePrimitiveFilterType(model, fieldDef, false) };
+                        const enumDef = getEnum(this.schema, fieldDef.type);
+                        if (enumDef) {
+                            fields[fieldName] = { type: this.makeEnumFilterType(model, fieldDef, false) };
+                        } else if (fieldDef.array) {
+                            fields[fieldName] = { type: this.makeArrayFilterType(model, fieldDef) };
+                        } else {
+                            fields[fieldName] = { type: this.makePrimitiveFilterType(model, fieldDef, false) };
+                        }
                     }
                 }
             }
-        }
 
-        if (array) {
-            const recursiveType = this.makeTypedJsonFilterType(model, { name: field, type, optional, array: false });
-            fields['some'] = { type: recursiveType };
-            fields['every'] = { type: recursiveType };
-            fields['none'] = { type: recursiveType };
-        } else {
-            const recursiveType = this.makeTypedJsonFilterType(model, { name: field, type, optional, array: false });
-            fields['is'] = { type: recursiveType };
-            fields['isNot'] = { type: recursiveType };
-        }
+            if (array) {
+                const recursiveType = this.makeTypedJsonFilterType(model, fieldInfo);
+                fields['some'] = { type: recursiveType };
+                fields['every'] = { type: recursiveType };
+                fields['none'] = { type: recursiveType };
+            } else {
+                const recursiveType = this.makeTypedJsonFilterType(model, fieldInfo);
+                fields['is'] = { type: recursiveType };
+                fields['isNot'] = { type: recursiveType };
+            }
 
-        // 添加 plain json filter
-        const jsonFilter = this.makeJsonFilterType(model, field);
-        // GraphQL 输入不支持联合，这里简单合并字段（有些字段可能重复，但 GraphQL 允许字段名唯一）
-        // 实际使用中，客户端需要明确使用对象形式，不能直接使用标量值。
-        // 为了简化，我们直接返回一个对象类型，包含所有可能的字段，用户必须使用对象。
-        // 并且我们移除了直接标量值的支持。
-        const allFields = { ...fields, ...jsonFilter.getFields() };
+            // 添加 plain json filter
+            const jsonFilter = this.makeJsonFilterType(model, field);
+            // GraphQL 输入不支持联合，这里简单合并字段（有些字段可能重复，但 GraphQL 允许字段名唯一）
+            // 实际使用中，客户端需要明确使用对象形式，不能直接使用标量值。
+            // 为了简化，我们直接返回一个对象类型，包含所有可能的字段，用户必须使用对象。
+            // 并且我们移除了直接标量值的支持。
+            return { ...fields, ...jsonFilter.getFields() };
+        }
         return new GraphQLInputObjectType({
             name: `${model ? lowerCaseFirst(model) : 'Typed'}${field}JsonFilterInput`,
             fields: allFields,
@@ -1199,25 +1191,26 @@ export class GraphQLTypeFactory<
                     }
 
                     let fieldType = this.makeRelationManipulationType(model, field, excludeFields, 'create', nextOpts);
-                    if (fieldDef.optional || fieldDef.array) {
-                        // 可选
-                    } else {
-                        let allFksOptional = false;
-                        if (fieldDef.relation.fields) {
-                            allFksOptional = fieldDef.relation.fields.every(f => {
-                                const fkDef = requireField(this.schema, model, f);
-                                return fkDef.optional || fieldHasDefaultValue(fkDef);
-                            });
-                        }
-                        if (allFksOptional) {
-                            // 可选
-                        } else {
-                            fieldType = new GraphQLNonNull(fieldType) as unknown as GraphQLInputObjectType;
-                        }
-                    }
-                    if (fieldDef.optional && !fieldDef.array) {
-                        // 允许 null，GraphQL 默认允许 null，无需处理
-                    }
+                    // 创建默认可选
+                    // if (fieldDef.optional || fieldDef.array) {
+                    //     // 可选
+                    // } else {
+                    //     let allFksOptional = false;
+                    //     if (fieldDef.relation.fields) {
+                    //         allFksOptional = fieldDef.relation.fields.every(f => {
+                    //             const fkDef = requireField(this.schema, model, f);
+                    //             return fkDef.optional || fieldHasDefaultValue(fkDef);
+                    //         });
+                    //     }
+                    //     if (allFksOptional) {
+                    //         // 可选
+                    //     } else {
+                    //         fieldType = new GraphQLNonNull(fieldType) as unknown as GraphQLInputObjectType;
+                    //     }
+                    // }
+                    // if (fieldDef.optional && !fieldDef.array) {
+                    //     // 允许 null，GraphQL 默认允许 null，无需处理
+                    // }
                     result[field] = { type: fieldType };
                 } else {
                     let fieldType: GraphQLInputType = this.makeScalarType(fieldDef.type, fieldDef.array, fieldDef.optional || !!fieldHasDefaultValue(fieldDef));
@@ -1225,7 +1218,7 @@ export class GraphQLTypeFactory<
                         // 数组
                         fieldType = new GraphQLList(fieldType);
                     }
-                    if (fieldDef.optional || fieldHasDefaultValue(fieldDef)) {
+                    if (fieldDef.optional || fieldHasDefaultValue(fieldDef) || fieldDef.foreignKeyFor) {
                         // 可选
                     } else {
                         fieldType = new GraphQLNonNull(fieldType);
@@ -1285,12 +1278,12 @@ export class GraphQLTypeFactory<
                     let fieldType = this.makeRelationManipulationType(model, field, excludeFields, 'update', nextOpts);
                     result[field] = { type: fieldType };
                 } else {
-                    let fieldType: GraphQLInputType = this.makeScalarType(fieldDef.type);
+                    let fieldType = this.makeScalarType(fieldDef.type);
                     if (this.isNumericField(fieldDef)) {
-                        fieldType = this.incrementalInput(model, field, fieldType as GraphQLInputObjectType);
+                        fieldType = this.numberIncrementalInput(fieldType as GraphQLScalarType);
                     }
                     if (fieldDef.array) {
-                        fieldType = this.arrayUpdateInput(model, field, fieldType as GraphQLInputObjectType);
+                        fieldType = this.arrayUpdateInput(fieldType as GraphQLInputObjectType);
                     }
                     result[field] = { type: fieldType };
                 }
@@ -1308,10 +1301,9 @@ export class GraphQLTypeFactory<
     }
 
     @cache()
-    private incrementalInput(model: string, field: string, fieldType: GraphQLInputObjectType) {
-        const incrementalTypeName = `${model}${field}${fieldType.name}IncrementalInput`;
+    private numberIncrementalInput(fieldType: GraphQLScalarType) {
         return new GraphQLInputObjectType({
-            name: incrementalTypeName,
+            name: `${fieldType.name}IncrementalInput`,
             fields: {
                 set: { type: fieldType },
                 increment: { type: GraphQLFloat },
@@ -1323,8 +1315,8 @@ export class GraphQLTypeFactory<
     }
 
     @cache()
-    private arrayUpdateInput(model: string, field: string, fieldType: GraphQLInputObjectType) {
-        const arrayTypeName = `${model}${field}${fieldType.name}ArrayUpdateInput`;
+    private arrayUpdateInput(fieldType: GraphQLInputObjectType) {
+        const arrayTypeName = `${fieldType.name}ArrayUpdateInput`;
         const arrayType = new GraphQLList(fieldType);
         return new GraphQLInputObjectType({
             name: arrayTypeName,
@@ -1876,7 +1868,7 @@ export class GraphQLTypeFactory<
         });
     }
 
-    readonly operationMaps = {
+    operationFieldConfigMap = {
         findUnique: (model) => ({
             type: this.makeSelectOutput(model),
             args: this.makeFindUniqueType(model),
@@ -1943,35 +1935,30 @@ export class GraphQLTypeFactory<
         }),
     }
 
-    formatFieldName(model: string, operation: string) {
-        const lower = model[0].toLowerCase() + model.slice(1);
-        return `${lower}_${operation}`
-    }
-
     @cache()
-    makeQueryType(): GraphQLObjectType {
-        const queryFields: any = {};
+    makeRootType(
+        typeName: 'Query' | 'Mutation',
+        allowedOperations: readonly string[]
+    ): GraphQLObjectType {
+        const fields: Record<string, any> = {};
         const modelNames = this.getEffectiveModel();
+
         for (const model of modelNames) {
-            const operations = this.getEffectiveOperations(model).filter((op) => AllReadOperations.includes(op as typeof AllReadOperations[number]));
+            // 过滤出该模型支持且属于当前根类型（读或写）的操作
+            const operations = this
+                .getEffectiveOperations(model)
+                .filter((op) => allowedOperations.includes(op));
+
             for (const operation of operations) {
-                queryFields[this.formatFieldName(model, operation)] = this.operationMaps[operation](model);
+                const fieldName = this.formatFieldName(model, operation);
+                // 从映射表中获取字段定义
+                fields[fieldName] = this.operationFieldConfigMap[operation](model);
             }
         }
-        return new GraphQLObjectType({ name: 'Query', fields: queryFields });
-    }
 
-    @cache()
-    makeMutationType(): GraphQLObjectType {
-        const mutationFields: any = {};
-        const modelNames = this.getEffectiveModel();
-        for (const model of modelNames) {
-            const operations = this.getEffectiveOperations(model).filter((op) => AllWriteOperations.includes(op as typeof AllWriteOperations[number]));
-            for (const operation of operations) {
-                mutationFields[this.formatFieldName(model, operation)] = this.operationMaps[operation](model);
-            }
-        }
-        return new GraphQLObjectType({ name: 'Mutation', fields: mutationFields });
+        return new GraphQLObjectType({
+            name: typeName,
+            fields: fields
+        });
     }
-
 }

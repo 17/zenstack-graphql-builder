@@ -3,7 +3,11 @@ import {
     FragmentDefinitionNode, specifiedDirectives
 } from 'graphql';
 
-import { CoreCrudOperations as AllCrudOperations } from '@zenstackhq/orm';
+import {
+    CoreCrudOperations as AllCrudOperations,
+    CoreReadOperations as AllReadOperations,
+    CoreWriteOperations as AllWriteOperations
+} from '@zenstackhq/orm';
 import {
     type ClientOptions,
     type ExtQueryArgsBase,
@@ -26,6 +30,7 @@ export interface ZenStackGraphQLBuilderOptions {
     maxDepth?: number;
     throwOnError?: boolean;
     useBigIntScalar?: boolean;
+    formatFieldName?: Function;
 }
 
 export interface DirectiveConfig {
@@ -45,61 +50,67 @@ export interface ParseResult {
     transformPlan: TransformPlan | null;
 }
 
-export type DirectiveHandler = (value: any, args: any, vars: any, fieldName: string) => any | Promise<any>;
+export type DirectiveHandler = (value: any, args: any, variableValues: any, fieldName: string) => any | Promise<any>;
+
+export const defaultOptions: ZenStackGraphQLBuilderOptions = {
+    maxDepth: 9,
+    throwOnError: false,
+    useBigIntScalar: false,
+    formatFieldName: (model: string, operation: string) => {
+        const lower = model[0].toLowerCase() + model.slice(1);
+        return `${lower}_${operation}`
+    }
+}
 
 export class ZenStackGraphQLBuilder<
     Schema extends SchemaDef,
     Options extends ClientOptions<Schema> = ClientOptions<Schema>,
-    ExtQueryArgs extends ExtQueryArgsBase = {},
 > {
-    readonly schema: SchemaDef;
+    private zenStackSchema: Schema;
+    private zenStackOptions: Options;
     private builderConfig: ZenStackGraphQLBuilderConfig;
     private options: ZenStackGraphQLBuilderOptions;
-    private scalars: any;
-    private types: GraphQLTypeFactory<SchemaDef, any, any>;
+    private scalarMap: any;
+    private typeFactory: GraphQLTypeFactory<Schema, Options>;
     private _schema: GraphQLSchema | null = null;
     private _rootResolver: Record<string, Function> | null = null;
     private directiveHandlers: Record<string, DirectiveHandler>;
 
     constructor(clientOrSchema: any, config?: ZenStackGraphQLBuilderConfig) {
         if ('$schema' in clientOrSchema) {
-            this.schema = clientOrSchema.$schema;
+            this.zenStackSchema = clientOrSchema.$schema;
+            this.zenStackOptions = clientOrSchema.$options;
         } else {
-            this.schema = clientOrSchema;
+            this.zenStackSchema = clientOrSchema;
         }
 
-        this.builderConfig = config || ({} as ZenStackGraphQLBuilderConfig);
+        this.builderConfig = config;
         this.options = {
-            maxDepth: 9,
-            throwOnError: false,
-            useBigIntScalar: false,
-            ...(config?.options || {}),
-        } as ZenStackGraphQLBuilderOptions;
+            ...defaultOptions,
+            ...config?.options,
+        };
 
-        this.scalars = { ...Scalars, ...this.builderConfig.scalars, Int: this.options.useBigIntScalar ? Scalars.BigInt : Scalars.Int };
+        this.scalarMap = { ...Scalars, ...this.builderConfig.scalars, Int: this.options.useBigIntScalar ? Scalars.BigInt : Scalars.Int };
         this.directiveHandlers = this.builderConfig?.directives || {};
-        this.types = new GraphQLTypeFactory(this.schema, this.scalars);
+        this.typeFactory = new GraphQLTypeFactory(this.zenStackSchema, this.scalarMap, this.zenStackOptions, this.options.formatFieldName);
         this._schema = this.buildGraphQLSchema();
         this._rootResolver = this.createRootResolver();
     }
 
     get modelNames() {
-        return Object.keys(this.types.schema.models);
+        return Object.keys(this.typeFactory.schema.models);
     }
 
-    /**
-     * 构建 GraphQL Schema 对象
-     */
     buildGraphQLSchema(): GraphQLSchema {
-        const queryType = this.types.makeQueryType();
-        const mutationType = this.types.makeMutationType();
+        const queryType = this.typeFactory.makeRootType('Query', AllReadOperations);
+        const mutationType = this.typeFactory.makeRootType('Mutation', AllWriteOperations);
 
         return new GraphQLSchema({
             query: queryType,
             mutation: mutationType,
             directives: [...specifiedDirectives, ...this.builderConfig?.directiveDefinitions || []],
             types: [
-                ...(Object.values(this.scalars || {}) as any),
+                ...(Object.values(this.scalarMap || {}) as any),
             ],
         });
     }
@@ -124,13 +135,13 @@ export class ZenStackGraphQLBuilder<
         fragments: Record<string, FragmentDefinitionNode>,
         variables: any,
         isAggregation: boolean,
-        depth: number
+        remainingDepth: number
     ): { prismaSelect: any; transformPlan: TransformPlan | null } {
         const prismaSelect: any = {};
         const transformPlan: TransformPlan = {};
         let hasDirectivesInTree = false;
 
-        if (!selectionSet || depth <= 0) {
+        if (!selectionSet || remainingDepth <= 0) {
             return { prismaSelect: undefined, transformPlan: null };
         }
 
@@ -142,7 +153,7 @@ export class ZenStackGraphQLBuilder<
                         ? fragments[selection.name.value]
                         : selection;
                 if (fragment?.selectionSet) {
-                    const result = this.traverseAstNode(fragment.selectionSet, fragments, variables, isAggregation, depth);
+                    const result = this.traverseAstNode(fragment.selectionSet, fragments, variables, isAggregation, remainingDepth);
                     Object.assign(prismaSelect, result.prismaSelect);
                     if (result.transformPlan) {
                         Object.assign(transformPlan, result.transformPlan);
@@ -172,7 +183,7 @@ export class ZenStackGraphQLBuilder<
                         fragments,
                         variables,
                         isAggregation,
-                        depth - 1
+                        remainingDepth - 1
                     );
                     if (!subResult.prismaSelect && !subResult.transformPlan) {
                         continue;
@@ -222,11 +233,11 @@ export class ZenStackGraphQLBuilder<
     /**
      * 对 Prisma 返回数据递归应用指令转换
      */
-    async applyDirectives(data: any, plan: TransformPlan | null, vars: any = {}): Promise<any> {
+    async applyDirectives(data: any, plan: TransformPlan | null, variableValues: any = {}): Promise<any> {
         if (!data || !plan) return data;
 
         if (Array.isArray(data)) {
-            return Promise.all(data.map((item) => this.applyDirectives(item, plan, vars)));
+            return Promise.all(data.map((item) => this.applyDirectives(item, plan, variableValues)));
         }
 
         const result = { ...data };
@@ -237,7 +248,7 @@ export class ZenStackGraphQLBuilder<
 
             // 1. 递归处理嵌套字段
             if (config.nested && value !== null) {
-                value = await this.applyDirectives(value, config.nested, vars);
+                value = await this.applyDirectives(value, config.nested, variableValues);
             }
 
             // 2. 按序应用当前字段指令
@@ -245,7 +256,7 @@ export class ZenStackGraphQLBuilder<
                 for (const dir of config.directives) {
                     const handler = this.directiveHandlers[dir.name];
                     if (handler) {
-                        value = await handler(value, dir.args, vars, fieldName);
+                        value = await handler(value, dir.args, variableValues, fieldName);
                     }
                 }
             }
