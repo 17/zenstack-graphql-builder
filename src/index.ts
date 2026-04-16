@@ -30,7 +30,7 @@ export interface ZenStackGraphQLBuilderOptions {
     maxDepth?: number;
     throwOnError?: boolean;
     useBigIntScalar?: boolean;
-    formatFieldName?: Function;
+    formatFieldName?: (model: string, operation: string) => string;
 }
 
 export interface DirectiveConfig {
@@ -90,7 +90,11 @@ export class ZenStackGraphQLBuilder<
             ...config?.options,
         };
 
-        this.scalarMap = { ...Scalars, ...this.builderConfig.scalars, Int: this.options.useBigIntScalar ? Scalars.BigInt : Scalars.Int };
+        this.scalarMap = {
+            ...Scalars,
+            ...this.builderConfig?.scalars || {},
+            Int: this.options.useBigIntScalar ? Scalars.BigInt : Scalars.Int
+        };
         this.directiveHandlers = this.builderConfig?.directives || {};
         this.typeFactory = new GraphQLTypeFactory(this.zenStackSchema, this.scalarMap, this.zenStackOptions, this.options.formatFieldName);
         this._schema = this.buildGraphQLSchema();

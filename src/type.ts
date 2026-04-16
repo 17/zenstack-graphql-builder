@@ -546,12 +546,7 @@ export class GraphQLTypeFactory<
                 fields['isNot'] = { type: recursiveType };
             }
 
-            // 添加 plain json filter
             const jsonFilter = this.makeJsonFilterType(model, field);
-            // GraphQL 输入不支持联合，这里简单合并字段（有些字段可能重复，但 GraphQL 允许字段名唯一）
-            // 实际使用中，客户端需要明确使用对象形式，不能直接使用标量值。
-            // 为了简化，我们直接返回一个对象类型，包含所有可能的字段，用户必须使用对象。
-            // 并且我们移除了直接标量值的支持。
             return { ...fields, ...jsonFilter.getFields() };
         }
         return new GraphQLInputObjectType({
@@ -1213,16 +1208,17 @@ export class GraphQLTypeFactory<
                     // }
                     result[field] = { type: fieldType };
                 } else {
-                    let fieldType: GraphQLInputType = this.makeScalarType(fieldDef.type, fieldDef.array, fieldDef.optional || !!fieldHasDefaultValue(fieldDef));
+                    const optional = fieldDef.optional || !!fieldHasDefaultValue(fieldDef) || !!fieldDef.foreignKeyFor;
+                    let fieldType: GraphQLInputType = this.makeScalarType(fieldDef.type, fieldDef.array, optional);
                     if (fieldDef.array) {
                         // 数组
                         fieldType = new GraphQLList(fieldType);
                     }
-                    if (fieldDef.optional || fieldHasDefaultValue(fieldDef) || fieldDef.foreignKeyFor) {
-                        // 可选
-                    } else {
-                        fieldType = new GraphQLNonNull(fieldType);
-                    }
+                    // if (fieldDef.optional || fieldHasDefaultValue(fieldDef) || fieldDef.foreignKeyFor) {
+                    //     // 可选
+                    // } else {
+                    //     fieldType = new GraphQLNonNull(fieldType);
+                    // }
                     // if (fieldDef.optional && fieldDef.type === 'Json') {
                     //     // 允许 DbNull，这里忽略，用标量处理
                     // }
