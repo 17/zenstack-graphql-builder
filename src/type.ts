@@ -124,12 +124,17 @@ const {
     requireModel,
 } = QueryUtils
 
+const trimTail = (arr) =>
+    arr.length > 0 && arr[arr.length - 1] === undefined
+        ? trimTail(arr.slice(0, -1))
+        : arr;
+
 // 简单的缓存装饰器实现
 function cache(): any {
     return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
         const originalMethod = descriptor.value;
         descriptor.value = function (this: any, ...args: any[]) {
-            const cacheKey = `${propertyKey}:${JSON.stringify(Array.from({ length: originalMethod.length }, (v, i) => args[i] ?? undefined))}`;
+            const cacheKey = `${propertyKey}:${JSON.stringify(trimTail(args))}`;
             if (!this._cache) this._cache = new Map();
             if (this._cache.has(cacheKey)) {
                 return this._cache.get(cacheKey);
@@ -459,7 +464,8 @@ export class GraphQLTypeFactory<
     private makeScalarType(type: string, array: boolean = false, optional: Boolean = true): GraphQLInputType {
         let baseType: GraphQLInputType;
         if (this.schema.typeDefs && type in this.schema.typeDefs) {
-            baseType = new GraphQLScalarType({ name: `${type}Scalar`, serialize: v => v, parseValue: v => v });
+            // baseType = new GraphQLScalarType({ name: `${type}Scalar`, serialize: v => v, parseValue: v => v });
+            baseType = this.scalars['Json'];
         } else if (this.schema.enums && type in this.schema.enums) {
             baseType = this.makeEnumType(type);
         } else {
@@ -636,7 +642,7 @@ export class GraphQLTypeFactory<
     }
 
     @cache()
-    private makeEnumFilterType(model: string | undefined, fieldDef: FieldDef, withAggregations: boolean, ignoreSlicing: boolean = false): GraphQLInputObjectType {
+    private makeEnumFilterType(model: string | undefined, fieldDef: FieldDef, withAggregations: boolean): GraphQLInputObjectType {
         const enumName = fieldDef.type;
         const optional = !!fieldDef.optional;
         const array = !!fieldDef.array;
@@ -647,7 +653,7 @@ export class GraphQLTypeFactory<
         }
         const components = () => this.makeCommonPrimitiveFilterComponents('Enum', baseType, () => this.makeEnumFilterType(model, fieldDef, withAggregations), ['equals', 'in', 'notIn', 'not'], withAggregations ? ['_count', '_min', '_max'] : undefined);
         return new GraphQLInputObjectType({
-            name: `${enumName}EnumFilter`,
+            name: `${enumName}Enum${withAggregations ? 'Agg' : ''}Filter`,
             fields: components,
         })
     }
@@ -1005,7 +1011,7 @@ export class GraphQLTypeFactory<
                     const enumDef = getEnum(this.schema, fieldDef.type);
                     if (enumDef) {
                         if (Object.keys(enumDef.values).length > 0) {
-                            fieldType = this.makeEnumFilterType(model, fieldDef, withAggregations, ignoreSlicing);
+                            fieldType = this.makeEnumFilterType(model, fieldDef, withAggregations);
                         }
                     } else if (fieldDef.array) {
                         fieldType = this.makeArrayFilterType(model, fieldDef);
@@ -1032,7 +1038,7 @@ export class GraphQLTypeFactory<
                             const enumDef = getEnum(this.schema, def.type);
                             if (enumDef) {
                                 if (Object.keys(enumDef.values).length > 0) {
-                                    fieldType = this.makeEnumFilterType(model, def, false, true);
+                                    fieldType = this.makeEnumFilterType(model, def, false);
                                 } else {
                                     continue;
                                 }
