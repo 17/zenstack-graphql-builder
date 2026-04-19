@@ -281,7 +281,7 @@ export class ZenStackGraphQLBuilder<
             const modelNameLower = model[0].toLowerCase() + model.slice(1);
 
             for (let operation of AllCrudOperations) {
-                rootResolver[`${modelNameLower}_${operation}`] = async (args: any, contextValue: any, info: any) => {
+                rootResolver[this.options.formatFieldName(model, operation)] = async (args: any, contextValue: any, info: any) => {
                     const { client, options: contextOptions } = contextValue;
                     const options = {
                         ...this.options,
