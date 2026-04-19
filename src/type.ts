@@ -258,23 +258,9 @@ export class GraphQLTypeFactory<
         }
     }
 
-    private internalMakeArrayFilterType(contextModel: string | undefined, field: string, elementType: GraphQLInputType): GraphQLInputObjectType {
-        const fields: GraphQLInputFieldConfigMap = {
-            equals: { type: new GraphQLList(elementType) },
-            has: { type: elementType },
-            hasEvery: { type: new GraphQLList(elementType) },
-            hasSome: { type: new GraphQLList(elementType) },
-            isEmpty: { type: GraphQLBoolean },
-        };
-
-        const allowedKinds = this.getEffectiveFilterKinds(contextModel, field);
-        const filteredOperators = this.trimFilterOperators(fields, allowedKinds);
-
-        return new GraphQLInputObjectType({
-            name: `${contextModel ? lowerCaseFirst(contextModel) : ''}${field}ArrayFilterInput`,
-            fields: filteredOperators,
-        });
-    }
+    // ------------------------------------------------------------------------
+    // 辅助方法
+    // ------------------------------------------------------------------------
 
 
     private isNumericField(fieldDef: FieldDef) {
@@ -424,7 +410,9 @@ export class GraphQLTypeFactory<
     //         fields: components,
     //     })
     // }
-
+    // ------------------------------------------------------------------------
+    // 基础类型构建器
+    // ------------------------------------------------------------------------
     @cache()
     private makeStringModeType(): GraphQLEnumType {
         return new GraphQLEnumType({
@@ -476,39 +464,32 @@ export class GraphQLTypeFactory<
         return array ? new GraphQLList(wrappedType) : wrappedType;
     }
 
-    @cache()
-    private makePrimitiveFilterType(
-        contextModel: string | undefined,
-        fieldDef: FieldDef,
-        withAggregations: boolean,
-        ignoreSlicing = false,
-    ): GraphQLInputObjectType | GraphQLScalarType {
-        const type = fieldDef.type as BuiltinType;
-        const optional = !!fieldDef.optional;
-        // return this.makeScalarType('Json');
-        // 添加裁切过滤器
-        const allowedFilterKinds = ignoreSlicing
-            ? undefined
-            : this.getEffectiveFilterKinds(contextModel, fieldDef.name);
-        switch (type) {
-            case 'String': return this.makeStringFilterType(withAggregations);
-            case 'Int':
-            case 'Float':
-            case 'Decimal':
-            case 'BigInt':
-                return this.makeNumberFilterType(withAggregations);
-            case 'Boolean': return this.makeBooleanFilterType(withAggregations);
-            case 'DateTime': return this.makeDateTimeFilterType(withAggregations);
-            case 'Bytes': return this.makeBytesFilterType(withAggregations);
-            case 'Json': return this.makeJsonFilterType(contextModel, fieldDef.name);
-            default: return new GraphQLInputObjectType({ name: 'UnknownFilter', fields: {} });
-        }
-    }
 
-
+    // ------------------------------------------------------------------------
+    // 过滤器类型（输入）
+    // ------------------------------------------------------------------------
     @cache()
     private makeArrayFilterType(model: string | undefined, fieldDef: FieldDef): GraphQLInputObjectType {
         return this.internalMakeArrayFilterType(model, fieldDef.name, this.makeScalarType(fieldDef.type as BuiltinType));
+    }
+
+    @cache()
+    private internalMakeArrayFilterType(contextModel: string | undefined, field: string, elementType: GraphQLInputType): GraphQLInputObjectType {
+        const fields: GraphQLInputFieldConfigMap = {
+            equals: { type: new GraphQLList(elementType) },
+            has: { type: elementType },
+            hasEvery: { type: new GraphQLList(elementType) },
+            hasSome: { type: new GraphQLList(elementType) },
+            isEmpty: { type: GraphQLBoolean },
+        };
+
+        const allowedKinds = this.getEffectiveFilterKinds(contextModel, field);
+        const filteredOperators = this.trimFilterOperators(fields, allowedKinds);
+
+        return new GraphQLInputObjectType({
+            name: `${contextModel ? lowerCaseFirst(contextModel) : ''}${field}ArrayFilterInput`,
+            fields: filteredOperators,
+        });
     }
 
     @cache()
@@ -527,7 +508,7 @@ export class GraphQLTypeFactory<
             if (!array) {
                 for (const [fieldName, fieldDef] of Object.entries(typeDef.fields)) {
                     if (this.isTypeDefType(fieldDef.type)) {
-                        fields[fieldName] = { type: this.makeTypedJsonFilterType(model, fieldDef) };
+                        fields[fieldName] = { type: this.makeTypedJsonFilterType(model, toFieldInfo(fieldDef)) };
                     } else {
                         const enumDef = getEnum(this.schema, fieldDef.type);
                         if (enumDef) {
@@ -580,6 +561,34 @@ export class GraphQLTypeFactory<
             name: `${contextModel ? lowerCaseFirst(contextModel) : ''}${field}JsonFilterInput`,
             fields,
         });
+    }
+    @cache()
+    private makePrimitiveFilterType(
+        contextModel: string | undefined,
+        fieldDef: FieldDef,
+        withAggregations: boolean,
+        ignoreSlicing = false,
+    ): GraphQLInputObjectType | GraphQLScalarType {
+        const type = fieldDef.type as BuiltinType;
+        const optional = !!fieldDef.optional;
+        // return this.makeScalarType('Json');
+        // 添加裁切过滤器
+        const allowedFilterKinds = ignoreSlicing
+            ? undefined
+            : this.getEffectiveFilterKinds(contextModel, fieldDef.name);
+        switch (type) {
+            case 'String': return this.makeStringFilterType(withAggregations);
+            case 'Int':
+            case 'Float':
+            case 'Decimal':
+            case 'BigInt':
+                return this.makeNumberFilterType(withAggregations);
+            case 'Boolean': return this.makeBooleanFilterType(withAggregations);
+            case 'DateTime': return this.makeDateTimeFilterType(withAggregations);
+            case 'Bytes': return this.makeBytesFilterType(withAggregations);
+            case 'Json': return this.makeJsonFilterType(contextModel, fieldDef.name);
+            default: return new GraphQLInputObjectType({ name: 'UnknownFilter', fields: {} });
+        }
     }
 
     @cache()
@@ -725,6 +734,9 @@ export class GraphQLTypeFactory<
         return new GraphQLEnumType({ name: _enum, values });
     }
 
+    // ------------------------------------------------------------------------
+    // 查询辅助类型（Select, Include, Omit, OrderBy, Where, Cursor, Distinct）
+    // ------------------------------------------------------------------------
     @cache()
     private makeOmitType(model: string): GraphQLInputObjectType {
         const fields: GraphQLInputFieldConfigMap = {};
@@ -753,7 +765,7 @@ export class GraphQLTypeFactory<
         for (const [field, def] of Object.entries(typeDef.fields)) {
             let fieldType: GraphQLInputType = this.makeScalarType(def.type);
             if (def.array) fieldType = new GraphQLList(fieldType);
-            if (def.optional) fieldType = fieldType; // GraphQL 默认是可空的，不需要包装
+            if (!def.optional) fieldType = new GraphQLNonNull(fieldType); // GraphQL 默认是可空的，不需要包装
             fields[field] = { type: fieldType };
         }
         return new GraphQLInputObjectType({
@@ -1075,44 +1087,6 @@ export class GraphQLTypeFactory<
         return { type: new GraphQLInputObjectType({ name: `${model}${uniqueField.name}CompoundUniqueInput`, fields: objFields }) }
     }
 
-    @cache()
-    private makeFindType(model: string, operation: CoreCrudOperations, options?: CreateSchemaOptions): any {
-        const fields: any = {};
-        const unique = operation === 'findUnique';
-        const findOne = operation === 'findUnique' || operation === 'findFirst';
-        const where = this.makeWhereType(model, unique, false, false, options);
-        if (unique) {
-            fields['where'] = { type: new GraphQLNonNull(where) };
-        } else {
-            fields['where'] = { type: where };
-        }
-
-        // fields['select'] = { type: this.makeSelectType(model, options) };
-        // fields['include'] = { type: this.makeIncludeType(model, options) };
-        // fields['omit'] = { type: this.makeOmitType(model) };
-
-        if (!unique) {
-            fields['skip'] = { type: GraphQLInt };
-            if (findOne) {
-                // fields['take'] = { type: GraphQLInt }; // 固定为 1，但输入允许任意值，实际会在解析时处理
-            } else {
-                fields['take'] = { type: GraphQLInt };
-            }
-            fields['orderBy'] = { type: new GraphQLList(this.makeOrderByType(model, true, false, options)) };
-            fields['cursor'] = { type: this.makeCursorType(model, options) };
-            if (!this.providerSupportsDistinct) {
-                fields['distinct'] = { type: this.makeDistinctType(model) };
-            }
-        }
-
-        return fields
-
-        // new GraphQLInputObjectType({
-        //     name: `${model}${operation === 'findUnique' ? 'FindUnique' : operation === 'findFirst' ? 'FindFirst' : 'FindMany'}Input`,
-        //     // type: this.makeSelectType(model, options),
-        //     fields,
-        // });
-    }
 
     // @cache()
     // private makeCountAggregateInputType(model: string): GraphQLInputObjectType {
@@ -1156,6 +1130,9 @@ export class GraphQLTypeFactory<
     //     });
     // }
 
+    // ------------------------------------------------------------------------
+    // 变更辅助类型（Create, Update, Relation Manipulation）
+    // ------------------------------------------------------------------------
     @cache()
     private makeCreateDataType(
         model: string,
@@ -1216,6 +1193,9 @@ export class GraphQLTypeFactory<
                 } else {
                     const optional = fieldDef.optional || !!fieldHasDefaultValue(fieldDef) || !!fieldDef.foreignKeyFor;
                     let fieldType: GraphQLInputType = this.makeScalarType(fieldDef.type, fieldDef.array, optional);
+                    if (this.isTypeDefType(fieldDef.type)) {
+                        fieldType = this.makeTypeDefType(fieldDef.type);
+                    }
                     if (fieldDef.array) {
                         // 数组
                         fieldType = new GraphQLList(fieldType);
@@ -1281,6 +1261,9 @@ export class GraphQLTypeFactory<
                     result[field] = { type: fieldType };
                 } else {
                     let fieldType = this.makeScalarType(fieldDef.type);
+                    if (this.isTypeDefType(fieldDef.type)) {
+                        fieldType = this.makeTypeDefType(fieldDef.type);
+                    }
                     if (this.isNumericField(fieldDef)) {
                         fieldType = this.numberIncrementalInput(fieldType as GraphQLScalarType);
                     }
@@ -1414,7 +1397,7 @@ export class GraphQLTypeFactory<
         const type = new GraphQLInputObjectType({
             name: `${model}CreateManyPayload${withoutFields.length > 0 ? `WithoutFields${withoutFields.join('And')}` : ''}Input`,
             fields: {
-                data: { type: dataType },
+                data: { type: new GraphQLList(dataType) },
                 skipDuplicates: { type: GraphQLBoolean },
             },
         });
@@ -1483,7 +1466,9 @@ export class GraphQLTypeFactory<
         else return where;
     }
 
-    // 参数
+    // ------------------------------------------------------------------------
+    // 查询参数输入（字段映射，不产生新类型）
+    // ------------------------------------------------------------------------
 
     makeExistsType(
         model: string,
@@ -1515,6 +1500,44 @@ export class GraphQLTypeFactory<
         return this.makeFindType(model, 'findMany', options);
     }
 
+    @cache()
+    private makeFindType(model: string, operation: CoreCrudOperations, options?: CreateSchemaOptions): any {
+        const fields: any = {};
+        const unique = operation === 'findUnique';
+        const findOne = operation === 'findUnique' || operation === 'findFirst';
+        const where = this.makeWhereType(model, unique, false, false, options);
+        if (unique) {
+            fields['where'] = { type: new GraphQLNonNull(where) };
+        } else {
+            fields['where'] = { type: where };
+        }
+
+        // fields['select'] = { type: this.makeSelectType(model, options) };
+        // fields['include'] = { type: this.makeIncludeType(model, options) };
+        // fields['omit'] = { type: this.makeOmitType(model) };
+
+        if (!unique) {
+            fields['skip'] = { type: GraphQLInt };
+            if (findOne) {
+                // fields['take'] = { type: GraphQLInt }; // 固定为 1，但输入允许任意值，实际会在解析时处理
+            } else {
+                fields['take'] = { type: GraphQLInt };
+            }
+            fields['orderBy'] = { type: new GraphQLList(this.makeOrderByType(model, true, false, options)) };
+            fields['cursor'] = { type: this.makeCursorType(model, options) };
+            if (!this.providerSupportsDistinct) {
+                fields['distinct'] = { type: this.makeDistinctType(model) };
+            }
+        }
+
+        return fields
+
+        // new GraphQLInputObjectType({
+        //     name: `${model}${operation === 'findUnique' ? 'FindUnique' : operation === 'findFirst' ? 'FindFirst' : 'FindMany'}Input`,
+        //     // type: this.makeSelectType(model, options),
+        //     fields,
+        // });
+    }
     @cache()
     makeCountType(
         model: string,
@@ -1847,7 +1870,6 @@ export class GraphQLTypeFactory<
                 field,
                 { type: this.makeScalarType(fieldDef.type, false, fieldDef.optional) }
             ]);
-        // console.log(Object.fromEntries(baseFields));
         const fields: any = {
             ...Object.fromEntries(baseFields),
             _count: { type: this.makeCountAggregateOutput(model) },
@@ -1866,10 +1888,13 @@ export class GraphQLTypeFactory<
     makeAffectedRowsOutput(): GraphQLObjectType {
         return new GraphQLObjectType({
             name: 'affectedRowsOutput',
-            fields: { count: { type: new GraphQLNonNull(GraphQLInt) } },
+            fields: { count: { type: GraphQLInt } },
         });
     }
 
+    // ------------------------------------------------------------------------
+    // 根类型（Query / Mutation）
+    // ------------------------------------------------------------------------
     operationFieldConfigMap = {
         findUnique: (model) => ({
             type: this.makeSelectOutput(model),
@@ -1904,7 +1929,7 @@ export class GraphQLTypeFactory<
             args: this.makeCreateType(model),
         }),
         createMany: (model) => ({
-            type: new GraphQLList(this.makeAffectedRowsOutput()),
+            type: this.makeAffectedRowsOutput(),
             args: this.makeCreateManyType(model),
         }),
         createManyAndReturn: (model) => ({

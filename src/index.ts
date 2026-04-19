@@ -298,7 +298,7 @@ export class ZenStackGraphQLBuilder<
 
                     const validatedArgs = {
                         ...args,
-                        ...(['exists', 'groupBy'].includes(operation) ? {} :
+                        ...(['exists', 'groupBy', 'updateMany', 'deleteMany', 'createMany'].includes(operation) ? {} :
                             isAggregation ? prismaSelect : { select: prismaSelect }),
                     };
 
